@@ -123,8 +123,8 @@ func (tx *PoolL2Tx) SetID() error {
 // [ 16 bits ] chainId // 2 bytes
 // [ 32 bits ] signatureConstant // 4 bytes
 // Total bits compressed data:  225 bits // 29 bytes in *big.Int representation
-func (tx *PoolL2Tx) TxCompressedData(chainID uint16) (*big.Int, error) {
-	var b [29]byte
+func (tx *PoolL2Tx) TxCompressedData(chainID uint64) (*big.Int, error) {
+	var b [35]byte
 
 	toBJJSign := byte(0)
 	pkSign, _ := babyjub.UnpackSignY(tx.ToBJJ)
@@ -150,8 +150,8 @@ func (tx *PoolL2Tx) TxCompressedData(chainID uint16) (*big.Int, error) {
 		return nil, Wrap(err)
 	}
 	copy(b[17:23], fromIdxBytes[:])
-	binary.BigEndian.PutUint16(b[23:25], chainID)
-	copy(b[25:29], SignatureConstantBytes[:])
+	binary.BigEndian.PutUint64(b[23:31], chainID)
+	copy(b[31:35], SignatureConstantBytes[:])
 
 	bi := new(big.Int).SetBytes(b[:])
 	return bi, nil
@@ -237,7 +237,6 @@ func (tx PoolL2Tx) Tx() Tx {
 		ToIdx:   tx.ToIdx,
 		Amount:  tx.Amount,
 		Nonce:   &tx.Nonce,
-		Fee:     &tx.Fee,
 		Type:    tx.Type,
 	}
 }
@@ -311,7 +310,7 @@ func (tx *PoolL2Tx) RqTxCompressedDataV2() (*big.Int, error) {
 
 // HashToSign returns the computed Poseidon hash from the *PoolL2Tx that will
 // be signed by the sender.
-func (tx *PoolL2Tx) HashToSign(chainID uint16) (*big.Int, error) {
+func (tx *PoolL2Tx) HashToSign(chainID uint64) (*big.Int, error) {
 	toCompressedData, err := tx.TxCompressedData(chainID)
 	if err != nil {
 		return nil, Wrap(err)

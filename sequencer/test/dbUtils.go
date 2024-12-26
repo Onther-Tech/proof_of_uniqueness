@@ -6,7 +6,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-// WipeDB redo all the migrations of the SQL DB (HistoryDB and L2DB),
+// WipeDB redo all the migrations of the SQL DB (HistoryDB),
 // efectively recreating the original state
 func WipeDB(db *sqlx.DB) {
 	if err := dbUtils.MigrationsDown(db.DB, 0); err != nil {

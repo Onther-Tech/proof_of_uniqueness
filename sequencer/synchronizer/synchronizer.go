@@ -10,7 +10,6 @@ import (
 	"time"
 	"tokamak-sybil-resistance/common"
 	"tokamak-sybil-resistance/database/historydb"
-	"tokamak-sybil-resistance/database/l2db"
 	"tokamak-sybil-resistance/database/statedb"
 	"tokamak-sybil-resistance/eth"
 	"tokamak-sybil-resistance/log"
@@ -101,9 +100,18 @@ func (s *StatsHolder) UpdateSync(lastBlock *common.Block, lastBatch *common.Batc
 func (s *StatsHolder) CopyStats() *Stats {
 	s.rw.RLock()
 	sCopy := s.Stats
-	if s.Sync.LastBatch.StateRoot != nil {
-		sCopy.Sync.LastBatch.StateRoot =
-			common.CopyBigInt(s.Sync.LastBatch.StateRoot)
+
+	if s.Sync.LastBatch.AccountRoot != nil {
+		sCopy.Sync.LastBatch.AccountRoot =
+			common.CopyBigInt(s.Sync.LastBatch.AccountRoot)
+	}
+	if s.Sync.LastBatch.VouchRoot != nil {
+		sCopy.Sync.LastBatch.VouchRoot =
+			common.CopyBigInt(s.Sync.LastBatch.VouchRoot)
+	}
+	if s.Sync.LastBatch.ScoreRoot != nil {
+		sCopy.Sync.LastBatch.ScoreRoot =
+			common.CopyBigInt(s.Sync.LastBatch.ScoreRoot)
 	}
 	s.rw.RUnlock()
 	return &sCopy
@@ -113,7 +121,7 @@ func (s *StatsHolder) CopyStats() *Stats {
 type Config struct {
 	StatsUpdateBlockNumDiffThreshold uint16
 	StatsUpdateFrequencyDivider      uint16
-	ChainID                          uint16
+	ChainID                          uint64
 }
 
 // Synchronizer implements the Synchronizer type
@@ -121,7 +129,6 @@ type Synchronizer struct {
 	EthClient        eth.ClientInterface
 	consts           *common.SCConsts
 	historyDB        *historydb.HistoryDB
-	l2DB             *l2db.L2DB
 	stateDB          *statedb.StateDB
 	cfg              Config
 	initVars         common.SCVariables
@@ -132,8 +139,12 @@ type Synchronizer struct {
 }
 
 // NewSynchronizer creates a new Synchronizer
-func NewSynchronizer(ethClient eth.ClientInterface, historyDB *historydb.HistoryDB,
-	l2DB *l2db.L2DB, stateDB *statedb.StateDB, cfg Config) (*Synchronizer, error) {
+func NewSynchronizer(
+	ethClient eth.ClientInterface,
+	historyDB *historydb.HistoryDB,
+	stateDB *statedb.StateDB,
+	cfg Config,
+) (*Synchronizer, error) {
 	rollupConstants, err := ethClient.RollupConstants()
 	if err != nil {
 		return nil, common.Wrap(fmt.Errorf("NewSynchronizer ethClient.RollupConstants(): %w",
@@ -144,7 +155,7 @@ func NewSynchronizer(ethClient eth.ClientInterface, historyDB *historydb.History
 		Rollup: *rollupConstants,
 	}
 
-	initVars, startBlockNum, err := getInitialVariables(ethClient, &consts)
+	initVars, startBlockNum, err := getInitialVariables(ethClient /*&consts*/)
 	if err != nil {
 		return nil, common.Wrap(err)
 	}
@@ -154,7 +165,6 @@ func NewSynchronizer(ethClient eth.ClientInterface, historyDB *historydb.History
 		EthClient:     ethClient,
 		consts:        &consts,
 		historyDB:     historyDB,
-		l2DB:          l2DB,
 		stateDB:       stateDB,
 		cfg:           cfg,
 		initVars:      *initVars,
@@ -162,6 +172,11 @@ func NewSynchronizer(ethClient eth.ClientInterface, historyDB *historydb.History
 		stats:         stats,
 	}
 	return s, s.init()
+}
+
+// StateDB returns the inner StateDB
+func (s *Synchronizer) StateDB() *statedb.StateDB {
+	return s.stateDB
 }
 
 // UpdateEth updates the ethereum stats, only if the previous stats expired
@@ -429,8 +444,9 @@ func (s *Synchronizer) reorg(uncleBlock *common.Block) (int64, error) {
 }
 
 func getInitialVariables(ethClient eth.ClientInterface,
-	consts *common.SCConsts) (*common.SCVariables, int64, error) {
-	rollupInit, rollupInitBlock, err := ethClient.RollupEventInit(consts.Rollup.GenesisBlockNum) //TODO: Check this with hermuz code
+
+/*consts *common.SCConsts*/) (*common.SCVariables, int64, error) {
+	rollupInit, rollupInitBlock, err := ethClient.RollupEventInit(77877) //TODO: Check this with hermuz code
 	if err != nil {
 		return nil, 0, common.Wrap(fmt.Errorf("RollupEventInit: %w", err))
 	}
@@ -594,8 +610,6 @@ func (s *Synchronizer) rollupSync(ethBlock *common.Block) (*common.RollupData, e
 	// Get ForgeBatch events to get the L1CoordinatorTxs
 	for _, evtForgeBatch := range rollupEvents.ForgeBatch {
 		batchData := common.NewBatchData()
-		position := 0
-
 		// Get the input for each Tx
 		forgeBatchArgs, sender, err := s.EthClient.RollupForgeBatchArgs(evtForgeBatch.EthTxHash,
 			evtForgeBatch.L1UserTxsLen)
@@ -630,12 +644,10 @@ func (s *Synchronizer) rollupSync(ethBlock *common.Block) (*common.RollupData, e
 					l1UserTxs = append(l1UserTxs, l1UserTx)
 				}
 			}
-
-			position = len(l1UserTxs)
 		}
 
-		l1TxsAuth := make([]common.AccountCreationAuth,
-			0, len(forgeBatchArgs.L1CoordinatorTxsAuths))
+		// l1TxsAuth := make([]common.AccountCreationAuth,
+		// 	0, len(forgeBatchArgs.L1CoordinatorTxsAuths))
 		// batchData.L1CoordinatorTxs = make([]common.L1Tx, 0, len(forgeBatchArgs.L1CoordinatorTxs))
 		// // Get L1 Coordinator Txs
 		// for i := range forgeBatchArgs.L1CoordinatorTxs {
@@ -670,27 +682,6 @@ func (s *Synchronizer) rollupSync(ethBlock *common.Block) (*common.RollupData, e
 
 		// Insert the slice of account creation auth
 		// only if the node run as a coordinator
-		if s.l2DB != nil && len(l1TxsAuth) > 0 {
-			err = s.l2DB.AddManyAccountCreationAuth(l1TxsAuth)
-			if err != nil {
-				return nil, common.Wrap(err)
-			}
-		}
-
-		// Insert all the txs forged in this batch (l1UserTxs,
-		// L1CoordinatorTxs, PoolL2Txs) into stateDB so that they are
-		// processed.
-
-		// Set TxType to the forged L2Txs
-		for i := range forgeBatchArgs.L2TxsData {
-			if err := forgeBatchArgs.L2TxsData[i].SetType(); err != nil {
-				return nil, common.Wrap(err)
-			}
-		}
-
-		// Transform L2 txs to PoolL2Txs
-		// NOTE: This is a big ugly, find a better way
-		poolL2Txs := common.L2TxsToPoolL2Txs(forgeBatchArgs.L2TxsData)
 
 		if int(forgeBatchArgs.VerifierIdx) >= len(s.consts.Rollup.Verifiers) {
 			return nil, common.Wrap(fmt.Errorf("forgeBatchArgs.VerifierIdx (%v) >= "+
@@ -698,17 +689,16 @@ func (s *Synchronizer) rollupSync(ethBlock *common.Block) (*common.RollupData, e
 				forgeBatchArgs.VerifierIdx, len(s.consts.Rollup.Verifiers)))
 		}
 		tpc := txprocessor.Config{
-			NLevels:  uint32(s.consts.Rollup.Verifiers[forgeBatchArgs.VerifierIdx].NLevels),
-			MaxTx:    uint32(s.consts.Rollup.Verifiers[forgeBatchArgs.VerifierIdx].MaxTx),
-			ChainID:  s.cfg.ChainID,
-			MaxFeeTx: common.RollupConstMaxFeeIdxCoordinator,
-			MaxL1Tx:  common.RollupConstMaxL1Tx,
+			NLevels: uint32(s.consts.Rollup.Verifiers[forgeBatchArgs.VerifierIdx].NLevels),
+			MaxTx:   uint32(s.consts.Rollup.Verifiers[forgeBatchArgs.VerifierIdx].MaxTx),
+			ChainID: s.cfg.ChainID,
+			// MaxFeeTx: common.RollupConstMaxFeeIdxCoordinator,
+			MaxL1Tx: common.RollupConstMaxL1Tx,
 		}
 		tp := txprocessor.NewTxProcessor(s.stateDB, tpc)
 
 		// ProcessTxs updates poolL2Txs adding: Nonce (and also TokenID, but we don't use it).
-		processTxsOut, err := tp.ProcessTxs(
-			l1UserTxs, poolL2Txs)
+		processTxsOut, err := tp.ProcessTxs(l1UserTxs /*, poolL2Txs*/)
 		if err != nil {
 			return nil, common.Wrap(err)
 		}
@@ -722,20 +712,6 @@ func (s *Synchronizer) rollupSync(ethBlock *common.Block) (*common.RollupData, e
 		// 		"forgeBatchArgs.NewStRoot (%v)",
 		// 		s.stateDB.AccountTree.Root().BigInt(), forgeBatchArgs.NewStRoot))
 		// }
-
-		l2Txs := make([]common.L2Tx, len(poolL2Txs))
-		for i, tx := range poolL2Txs {
-			l2Txs[i] = tx.L2Tx()
-			// Set TxID, BlockNum, BatchNum and Position to the forged L2Txs
-			if err := l2Txs[i].SetID(); err != nil {
-				return nil, common.Wrap(err)
-			}
-			l2Txs[i].EthBlockNum = blockNum
-			l2Txs[i].BatchNum = batchNum
-			l2Txs[i].Position = position
-			position++
-		}
-		batchData.L2Txs = l2Txs
 
 		// Set the BatchNum in the forged L1UserTxs
 		for i := range l1UserTxs {
@@ -783,7 +759,10 @@ func (s *Synchronizer) rollupSync(ethBlock *common.Block) (*common.RollupData, e
 			EthTxHash:   ethTxHash,
 			EthBlockNum: blockNum,
 			ForgerAddr:  *sender,
-			StateRoot:   forgeBatchArgs.NewStRoot,
+
+			AccountRoot: forgeBatchArgs.NewAccountRoot,
+			VouchRoot:   forgeBatchArgs.NewVouchRoot,
+			ScoreRoot:   forgeBatchArgs.NewScoreRoot,
 			NumAccounts: len(batchData.CreatedAccounts),
 			LastIdx:     forgeBatchArgs.NewLastIdx,
 			ExitRoot:    forgeBatchArgs.NewExitRoot,

@@ -7,10 +7,46 @@ By utilizing a zk-rollup architecture, we aim to significantly reduce the comput
 ## Setup
 ```bash
 cp .env.example .env
-brew install go-task # for running various tasks, especially tests
+brew install go-task # if you are on different OS: https://taskfile.dev/installation/
+brew install golangci-lint
+
+# from the root directory
+cp githooks/pre-commit .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit
 ```
 
-## Running Tests
+If you are using VSCode, install the [go extension](https://marketplace.visualstudio.com/items?itemName=golang.go) and add the following to your user settings.json file to lint `go` files on save (note that if you push unlinted go files, triggered actions will fail):
+```json
+"go.lintTool": "golangci-lint",
+"go.lintFlags": [
+    "--fast"
+],
+"go.lintOnSave": "file",
+"go.formatTool": "gofmt",
+"go.useLanguageServer": true,
+"[go]": {
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+        "source.organizeImports": "always"
+    }
+}
+```
+
+## Run Sequencer
+```bash
+task run-seq
+```
+
+## Update keystore address
+```bash
+mkdir -p var/tokamak/ethkeystore  # create this directory inside sequencer
+
+# Once file is created,New address will be given in terminal, Please update this address as forger address in cfg.toml file
+
+cfg.Coordinator.ForgerAddress  # Update this address
+```
+
+## Run Tests
 ```bash
 task test-<name> # for example: task test-historydb
 ```
@@ -37,4 +73,14 @@ go run main.go run --mode sync --cfg cfg.toml
 
 ```
 go run main.go run --mode coord --cfg cfg.toml
+```
+## To generate .go file of the contract
+```
+npm install solc@0.8.23
+```
+```
+npx solc --bin --abi src/sybil.sol -o build/
+```
+```
+abigen --abi=build/src_mvp_Sybil_sol_Sybil.abi --bin=build/src_mvp_Sybil_sol_Sybil.bin --pkg=sybil --out=Sybil.go
 ```

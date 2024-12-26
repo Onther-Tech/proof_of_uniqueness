@@ -1,6 +1,16 @@
 version: '3'
 
 tasks:
+  run-seq:
+    dotenv: [".env"]
+    cmds:
+      - go run main.go run --cfg cfg.toml
+
+  run-migrate:
+    dotenv: [".env"]
+    cmds:
+      - go run main.go migrate
+
   test-historydb:
     dotenv: [".env"]
     cmds:
@@ -20,9 +30,15 @@ tasks:
     dotenv: [".env"]
     cmds:
       - go test ./database/statedb -v
-  
-  test-sequencer:
+
+  test-node:
+    dotenv: [".env"]
     cmds:
+      - go test ./ -v -count=1
+  
+  test-seq:
+    cmds:
+      - task: test-node
       - task: test-synchronizer
       - task: test-historydb
       - task: test-til

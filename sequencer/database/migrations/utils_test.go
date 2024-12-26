@@ -2,8 +2,6 @@ package migrations_test
 
 import (
 	"fmt"
-	"os"
-	"strconv"
 	"testing"
 	"tokamak-sybil-resistance/log"
 
@@ -60,27 +58,7 @@ func runMigrationTest(t *testing.T, migrationNumber int, miter migrationTester) 
 }
 
 func initCleanSQLDB() (*sqlx.DB, error) {
-	host := os.Getenv("PGHOST")
-	if host == "" {
-		host = "localhost"
-	}
-	port, _ := strconv.Atoi(os.Getenv("PGPORT"))
-	if port == 0 {
-		port = 5432
-	}
-	user := os.Getenv("PGUSER")
-	if user == "" {
-		user = "hermez"
-	}
-	pass := os.Getenv("PGPASSWORD")
-	if pass == "" {
-		panic("No PGPASSWORD envvar specified")
-	}
-	dbname := os.Getenv("PGDATABASE")
-	if dbname == "" {
-		dbname = "hermez"
-	}
-	return dbUtils.ConnectSQLDB(port, host, user, pass, dbname)
+	return dbUtils.ConnectSQLDB()
 }
 
 func runMigrationsUp(db *sqlx.DB, n int) error {

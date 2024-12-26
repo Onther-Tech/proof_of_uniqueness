@@ -8,6 +8,7 @@ of using this package.
 package stateapiupdater
 
 import (
+	"database/sql"
 	"fmt"
 	"sync"
 	"tokamak-sybil-resistance/common"
@@ -104,4 +105,77 @@ func NewUpdater(hdb *historydb.HistoryDB, config *historydb.NodeConfig, vars *co
 	}
 	u.SetSCVars(vars.AsPtr())
 	return &u, nil
+}
+
+// Store the State in the HistoryDB
+func (u *Updater) Store() error {
+	u.rw.RLock()
+	defer u.rw.RUnlock()
+	return common.Wrap(u.hdb.SetStateInternalAPI(&u.state))
+}
+
+// UpdateNetworkInfo update Status.Network information
+func (u *Updater) UpdateNetworkInfo(
+	lastEthBlock, lastSyncBlock common.Block,
+	lastBatchNum common.BatchNum, /*, currentSlot int64*/
+) error {
+	// Get last batch in API format
+	lastBatch, err := u.hdb.GetBatchInternalAPI(lastBatchNum)
+	if common.Unwrap(err) == sql.ErrNoRows {
+		lastBatch = nil
+	} else if err != nil {
+		return common.Wrap(err)
+	}
+	// u.rw.RLock()
+	// auctionVars := u.vars.Auction
+	// u.rw.RUnlock()
+	// Get next forgers
+	// lastClosedSlot := currentSlot + int64(auctionVars.ClosedAuctionSlots)
+	// nextForgers, err := u.hdb.GetNextForgersInternalAPI(auctionVars, &u.consts.Auction,
+	// 	lastSyncBlock, currentSlot, lastClosedSlot)
+	// if common.Unwrap(err) == sql.ErrNoRows {
+	// 	nextForgers = nil
+	// } else if err != nil {
+	// 	return common.Wrap(err)
+	// }
+
+	bucketUpdates, err := u.hdb.GetBucketUpdatesInternalAPI()
+	if err == sql.ErrNoRows {
+		bucketUpdates = nil
+	} else if err != nil {
+		return common.Wrap(err)
+	}
+
+	u.rw.Lock()
+	// Update NodeInfo struct
+	for i, bucketParams := range u.state.Rollup.Buckets {
+		for _, bucketUpdate := range bucketUpdates {
+			if bucketUpdate.NumBucket == i {
+				bucketParams.Withdrawals = bucketUpdate.Withdrawals
+				u.state.Rollup.Buckets[i] = bucketParams
+				break
+			}
+		}
+	}
+	// Update pending L1s
+	pendingL1s, err := u.hdb.GetUnforgedL1UserTxsCount()
+	if err != nil {
+		return common.Wrap(err)
+	}
+	u.state.Network.LastSyncBlock = lastSyncBlock.Num
+	u.state.Network.LastEthBlock = lastEthBlock.Num
+	u.state.Network.LastBatch = lastBatch
+	// u.state.Network.CurrentSlot = currentSlot
+	// u.state.Network.NextForgers = nextForgers
+	u.state.Network.PendingL1Txs = pendingL1s
+	u.rw.Unlock()
+	return nil
+}
+
+// UpdateNetworkInfoBlock update Status.Network block related information
+func (u *Updater) UpdateNetworkInfoBlock(lastEthBlock, lastSyncBlock common.Block) {
+	u.rw.Lock()
+	u.state.Network.LastSyncBlock = lastSyncBlock.Num
+	u.state.Network.LastEthBlock = lastEthBlock.Num
+	u.rw.Unlock()
 }

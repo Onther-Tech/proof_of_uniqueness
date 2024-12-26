@@ -2,8 +2,8 @@ package config
 
 import (
 	"fmt"
-	"io/ioutil"
 	"log"
+	"os"
 	"path/filepath"
 	"reflect"
 
@@ -19,7 +19,7 @@ func loadDefault(defaultValues string, cfg interface{}) error {
 }
 
 func loadFile(path string, cfg interface{}) error {
-	bs, err := ioutil.ReadFile(filepath.Clean(path))
+	bs, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return err
 	}

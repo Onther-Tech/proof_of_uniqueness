@@ -2,7 +2,6 @@ package statedb
 
 import (
 	"encoding/hex"
-	"io/ioutil"
 	"math/big"
 	"math/rand"
 	"os"
@@ -445,7 +444,7 @@ func TestCheckAccountsTreeTestVectors(t *testing.T) {
 // }
 
 // func TestInitNewStateDB(t *testing.T) {
-// 	dir, err := ioutil.TempDir("", "tmpdb")
+// 	dir, err := os.MkdirTemp("", "tmpdb")
 
 // 	// Initialize the StateDB
 // 	var stateDB *StateDB
@@ -458,7 +457,7 @@ func TestCheckAccountsTreeTestVectors(t *testing.T) {
 // }
 
 func TestNewStateDBIntermediateState(t *testing.T) {
-	dir, err := ioutil.TempDir("", "tmpdb")
+	dir, err := os.MkdirTemp("", "tmpdb")
 	require.NoError(t, err)
 	deleteme = append(deleteme, dir)
 
@@ -597,7 +596,7 @@ func TestNewStateDBIntermediateState(t *testing.T) {
 }
 
 func TestStateDBGetAccounts(t *testing.T) {
-	dir, err := ioutil.TempDir("", "tmpdb")
+	dir, err := os.MkdirTemp("", "tmpdb")
 	require.NoError(t, err)
 	deleteme = append(deleteme, dir)
 
@@ -627,7 +626,7 @@ func TestStateDBGetAccounts(t *testing.T) {
 // TestListCheckpoints performs almost the same test than kvdb/kvdb_test.go
 // TestListCheckpoints, but over the StateDB
 func TestListCheckpoints(t *testing.T) {
-	dir, err := ioutil.TempDir("", "tmpdb")
+	dir, err := os.MkdirTemp("", "tmpdb")
 	require.NoError(t, err)
 	deleteme = append(deleteme, dir)
 
@@ -661,7 +660,7 @@ func TestListCheckpoints(t *testing.T) {
 // TestDeleteOldCheckpoints performs almost the same test than
 // kvdb/kvdb_test.go TestDeleteOldCheckpoints, but over the StateDB
 func TestDeleteOldCheckpoints(t *testing.T) {
-	dir, err := ioutil.TempDir("", "tmpdb")
+	dir, err := os.MkdirTemp("", "tmpdb")
 	require.NoError(t, err)
 	deleteme = append(deleteme, dir)
 
@@ -688,7 +687,7 @@ func TestDeleteOldCheckpoints(t *testing.T) {
 // TestConcurrentDeleteOldCheckpoints performs almost the same test than
 // kvdb/kvdb_test.go TestConcurrentDeleteOldCheckpoints, but over the StateDB
 func TestConcurrentDeleteOldCheckpoints(t *testing.T) {
-	dir, err := ioutil.TempDir("", "tmpdb")
+	dir, err := os.MkdirTemp("", "tmpdb")
 	require.NoError(t, err)
 	deleteme = append(deleteme, dir)
 
@@ -728,7 +727,7 @@ func TestConcurrentDeleteOldCheckpoints(t *testing.T) {
 }
 
 func TestResetFromBadCheckpoint(t *testing.T) {
-	dir, err := ioutil.TempDir("", "tmpdb")
+	dir, err := os.MkdirTemp("", "tmpdb")
 	require.NoError(t, err)
 	deleteme = append(deleteme, dir)
 

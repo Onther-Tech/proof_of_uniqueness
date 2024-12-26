@@ -1,0 +1,11 @@
+linters-settings:
+  govet:
+    shadow: true
+
+linters:
+  disable:
+    - unused
+
+run:
+  tests: true
+  timeout: 1m

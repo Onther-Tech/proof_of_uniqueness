@@ -66,34 +66,33 @@ package txselector
 import (
 	"tokamak-sybil-resistance/common"
 	"tokamak-sybil-resistance/database/kvdb"
-	"tokamak-sybil-resistance/database/l2db"
 	"tokamak-sybil-resistance/database/statedb"
-
-	ethCommon "github.com/ethereum/go-ethereum/common"
-	"github.com/iden3/go-iden3-crypto/babyjub"
+	"tokamak-sybil-resistance/txprocessor"
 )
 
 // CoordAccount contains the data of the Coordinator account, that will be used
 // to create new transactions of CreateAccountDeposit type to add new TokenID
 // accounts for the Coordinator to receive the fees.
-type CoordAccount struct {
-	Addr                ethCommon.Address
-	BJJ                 babyjub.PublicKeyComp
-	AccountCreationAuth []byte // signature in byte array format
-}
+// type CoordAccount struct {
+// 	Addr                ethCommon.Address
+// 	BJJ                 babyjub.PublicKeyComp
+// 	AccountCreationAuth []byte // signature in byte array format
+// }
 
 // TxSelector implements all the functionalities to select the txs for the next
 // batch
 type TxSelector struct {
-	l2db            *l2db.L2DB
 	localAccountsDB *statedb.LocalStateDB
 
-	coordAccount *CoordAccount
+	// coordAccount *CoordAccount
 }
 
 // NewTxSelector returns a *TxSelector
-func NewTxSelector(coordAccount *CoordAccount, dbpath string,
-	synchronizerStateDB *statedb.StateDB, l2 *l2db.L2DB) (*TxSelector, error) {
+func NewTxSelector(
+	// coordAccount *CoordAccount,
+	dbpath string,
+	synchronizerStateDB *statedb.StateDB,
+) (*TxSelector, error) {
 	localAccountsDB, err := statedb.NewLocalStateDB(
 		statedb.Config{
 			Path:    dbpath,
@@ -107,8 +106,238 @@ func NewTxSelector(coordAccount *CoordAccount, dbpath string,
 	}
 
 	return &TxSelector{
-		l2db:            l2,
 		localAccountsDB: localAccountsDB,
-		coordAccount:    coordAccount,
+		// coordAccount:    coordAccount,
 	}, nil
+}
+
+// LocalAccountsDB returns the LocalStateDB of the TxSelector
+func (txsel *TxSelector) LocalAccountsDB() *statedb.LocalStateDB {
+	return txsel.localAccountsDB
+}
+
+// Reset tells the TxSelector to get it's internal AccountsDB
+// from the required `batchNum`
+func (txsel *TxSelector) Reset(batchNum common.BatchNum, fromSynchronizer bool) error {
+	return common.Wrap(txsel.localAccountsDB.Reset(batchNum, fromSynchronizer))
+}
+
+// GetL1L2TxSelection returns the selection of L1 + L2 txs.
+// It returns: the CoordinatorIdxs used to receive the fees of the selected
+// L2Txs. An array of bytearrays with the signatures of the
+// AccountCreationAuthorization of the accounts of the users created by the
+// Coordinator with L1CoordinatorTxs of those accounts that does not exist yet
+// but there is a transactions to them and the authorization of account
+// creation exists. The L1UserTxs, L1CoordinatorTxs, PoolL2Txs that will be
+// included in the next batch.
+func (txsel *TxSelector) GetL1TxSelection(
+	selectionConfig txprocessor.Config,
+	l1UserTxs,
+	l1UserFutureTxs []common.L1Tx,
+) ([][]byte, []common.L1Tx, error) {
+	accCreationAuths, l1UserTxs, err := txsel.getL1TxSelection(selectionConfig, l1UserTxs, l1UserFutureTxs)
+	return accCreationAuths, l1UserTxs, err
+}
+
+// getL1L2TxSelection returns the selection of L1 + L2 txs.
+// It returns: the CoordinatorIdxs used to receive the fees of the selected
+// L2Txs. An array of bytearrays with the signatures of the
+// AccountCreationAuthorization of the accounts of the users created by the
+// Coordinator with L1CoordinatorTxs of those accounts that does not exist yet
+// but there is a transactions to them and the authorization of account
+// creation exists. The L1UserTxs, L1CoordinatorTxs, PoolL2Txs that will be
+// included in the next batch.
+func (txsel *TxSelector) getL1TxSelection(selectionConfig txprocessor.Config,
+	l1UserTxs, l1UserFutureTxs []common.L1Tx) ([][]byte, []common.L1Tx, error) {
+	// 	// WIP.0: the TxSelector is not optimized and will need a redesign. The
+	// 	// current version is implemented in order to have a functional
+	// 	// implementation that can be used ASAP.
+
+	// 	// Steps of this method:
+	// 	// - ProcessL1Txs (User txs)
+	// 	// - getPendingTxs (forgable directly with current state & not forgable
+	// 	// yet)
+	// 	// - split between l2TxsForgable & l2TxsNonForgable, where:
+	// 	// 	- l2TxsForgable are the txs that are directly forgable with the
+	// 	// 	current state
+	// 	// 	- l2TxsNonForgable are the txs that are not directly forgable
+	// 	// 	with the current state, but that may be forgable once the
+	// 	// 	l2TxsForgable ones are processed
+	// 	// - for l2TxsForgable, and if needed, for l2TxsNonForgable:
+	// 	// 	- sort by Fee & Nonce
+	// 	// 	- loop over l2Txs (txsel.processL2Txs)
+	// 	// 	        - Fill tx.TokenID tx.Nonce
+	// 	// 	        - Check enough Balance on sender
+	// 	// 	        - Check Nonce
+	// 	// 	        - Create CoordAccount L1CoordTx for TokenID if needed
+	// 	// 	                - & ProcessL1Tx of L1CoordTx
+	// 	// 	        - Check validity of receiver Account for ToEthAddr / ToBJJ
+	// 	// 	        - Create UserAccount L1CoordTx if needed (and possible)
+	// 	// 	        - If everything is fine, store l2Tx to selectedTxs & update NoncesMap
+	// 	// - Prepare coordIdxsMap & AccumulatedFees
+	// 	// - Distribute AccumulatedFees to CoordIdxs
+	// 	// - MakeCheckpoint
+	// 	failedAtomicGroups := []failedAtomicGroup{}
+	// START_SELECTION:
+	// 	txselStateDB := txsel.localAccountsDB.StateDB
+	// 	tp := txprocessor.NewTxProcessor(txselStateDB, selectionConfig)
+	// 	tp.AccumulatedFees = make(map[common.Idx]*big.Int)
+
+	// 	// Process L1UserTxs
+	// 	for i := 0; i < len(l1UserTxs); i++ {
+	// 		// assumption: l1usertx are sorted by L1Tx.Position
+	// 		_, _, _, _, err := tp.ProcessL1Tx(nil, &l1UserTxs[i])
+	// 		if err != nil {
+	// 			return nil, nil, nil, nil, nil, nil, tracerr.Wrap(err)
+	// 		}
+	// 	}
+
+	// 	// Get pending txs from the pool
+	// 	// Filter transactions belonging to failed atomic groups
+	// 	selectableTxsTmp, discardedTxs := filterFailedAtomicGroups(l2TxsFromDB, failedAtomicGroups)
+	// 	// Filter invalid atomic groups
+	// 	selectableTxs, discardedTxsTmp := filterInvalidAtomicGroups(selectableTxsTmp)
+	// 	discardedTxs = append(discardedTxs, discardedTxsTmp...)
+
+	// 	// in case that length of l2TxsForgable is 0, no need to continue, there
+	// 	// is no L2Txs to forge at all
+	// 	if len(selectableTxs) == 0 {
+	// 		err = tp.StateDB().MakeCheckpoint()
+	// 		if err != nil {
+	// 			return nil, nil, nil, nil, nil, nil, tracerr.Wrap(err)
+	// 		}
+
+	// 		metric.SelectedL1UserTxs.Set(float64(len(l1UserTxs)))
+	// 		metric.SelectedL1CoordinatorTxs.Set(0)
+	// 		metric.SelectedL2Txs.Set(0)
+	// 		metric.DiscardedL2Txs.Set(float64(len(discardedTxs)))
+
+	// 		return nil, nil, l1UserTxs, nil, nil, discardedTxs, nil
+	// 	}
+
+	// 	// Calculate average fee for atomic groups
+	// 	atomicFeeMap := calculateAtomicGroupsAverageFee(selectableTxs)
+
+	// 	// Initialize selection arrays
+
+	// 	// Used authorizations in the l1CoordinatorTxs
+	var accAuths [][]byte
+	// 	// Processed txs for necessary account creation
+	// 	// (fees for coordinator or missing destinatary accounts)
+	// 	var l1CoordinatorTxs []common.L1Tx
+	// 	// Processed txs
+	// 	var selectedTxs []common.PoolL2Tx
+	// 	// Start selection process
+	// 	shouldKeepSelectionProcess := true
+	// 	// Order L2 txs. This has to be done just once,
+	// 	// as the array will get smaller over iterations, but the order won't be affected
+	// 	selectableTxs = sortL2Txs(selectableTxs, atomicFeeMap)
+	// 	for shouldKeepSelectionProcess {
+	// 		// Process txs and get selection
+	// 		iteAccAuths, iteL1CoordinatorTxs, iteSelectedTxs,
+	// 			nonSelectedTxs, invalidTxs, failedAtomicGroup, err := txsel.processL2Txs(
+	// 			tp,
+	// 			selectionConfig,
+	// 			len(l1UserTxs)+len(l1CoordinatorTxs), // Already added L1 Txs
+	// 			len(selectedTxs),                     // Already added L2 Txs
+	// 			l1UserFutureTxs,                      // Used to prevent the creation of unnecessary accounts
+	// 			selectableTxs,                        // Txs that can be selected
+	// 		)
+	// 		if failedAtomicGroup.id != common.EmptyAtomicGroupID {
+	// 			// An atomic group failed to be processed
+	// 			// after at least one tx from the group already altered the state.
+	// 			// Revert state to current batch and start the selection process again,
+	// 			// ignoring the txs from the group that failed
+	// 			log.Info(err)
+	// 			failedAtomicGroups = append(failedAtomicGroups, failedAtomicGroup)
+	// 			if err := txsel.localAccountsDB.Reset(
+	// 				txsel.localAccountsDB.CurrentBatch(), false,
+	// 			); err != nil {
+	// 				return nil, nil, nil, nil, nil, nil, tracerr.Wrap(err)
+	// 			}
+	// 			goto START_SELECTION
+	// 		}
+	// 		if err != nil {
+	// 			return nil, nil, nil, nil, nil, nil, tracerr.Wrap(err)
+	// 		}
+	// 		// Add iteration results to selection arrays
+	// 		accAuths = append(accAuths, iteAccAuths...)
+	// 		l1CoordinatorTxs = append(l1CoordinatorTxs, iteL1CoordinatorTxs...)
+	// 		selectedTxs = append(selectedTxs, iteSelectedTxs...)
+	// 		discardedTxs = append(discardedTxs, invalidTxs...)
+	// 		// Prepare for next iteration
+	// 		if len(iteSelectedTxs) == 0 { // Stop iterating
+	// 			// If in this iteration no txs got selected, stop selection process
+	// 			shouldKeepSelectionProcess = false
+	// 			// Add non selected txs to the discarded array as at this point they won't get selected
+	// 			for i := 0; i < len(nonSelectedTxs); i++ {
+	// 				discardedTxs = append(discardedTxs, nonSelectedTxs[i])
+	// 			}
+	// 		} else { // Keep iterating
+	// 			// Try to select nonSelected txs in next iteration
+	// 			selectableTxs = nonSelectedTxs
+	// 		}
+	// 	}
+
+	// 	// get CoordIdxsMap for the TokenIDs
+	// 	coordIdxsMap := make(map[common.TokenID]common.Idx)
+	// 	for i := 0; i < len(selectedTxs); i++ {
+	// 		// get TokenID from tx.Sender
+	// 		accSender, err := tp.StateDB().GetAccount(selectedTxs[i].FromIdx)
+	// 		if err != nil {
+	// 			return nil, nil, nil, nil, nil, nil, tracerr.Wrap(err)
+	// 		}
+	// 		tokenID := accSender.TokenID
+
+	// 		coordIdx, err := txsel.getCoordIdx(tokenID)
+	// 		if err != nil {
+	// 			// if err is db.ErrNotFound, should not happen, as all
+	// 			// the selectedTxs.TokenID should have a CoordinatorIdx
+	// 			// created in the DB at this point
+	// 			return nil, nil, nil, nil, nil, nil, tracerr.Wrap(err)
+	// 		}
+	// 		coordIdxsMap[tokenID] = coordIdx
+	// 	}
+
+	// var coordIdxs []common.Idx
+	// 	for _, idx := range coordIdxsMap {
+	// 		coordIdxs = append(coordIdxs, idx)
+	// 	}
+	// 	// sort CoordIdxs
+	// 	sort.SliceStable(coordIdxs, func(i, j int) bool {
+	// 		return coordIdxs[i] < coordIdxs[j]
+	// 	})
+
+	// 	// distribute the AccumulatedFees from the processed L2Txs into the
+	// 	// Coordinator Idxs
+	// 	for idx, accumulatedFee := range tp.AccumulatedFees {
+	// 		cmp := accumulatedFee.Cmp(big.NewInt(0))
+	// 		if cmp == 1 { // accumulatedFee>0
+	// 			// send the fee to the Idx of the Coordinator for the TokenID
+	// 			accCoord, err := txsel.localAccountsDB.GetAccount(idx)
+	// 			if err != nil {
+	// 				log.Errorw("Can not distribute accumulated fees to coordinator "+
+	// 					"account: No coord Idx to receive fee", "idx", idx)
+	// 				return nil, nil, nil, nil, nil, nil, tracerr.Wrap(err)
+	// 			}
+	// 			accCoord.Balance = new(big.Int).Add(accCoord.Balance, accumulatedFee)
+	// 			_, err = txsel.localAccountsDB.UpdateAccount(idx, accCoord)
+	// 			if err != nil {
+	// 				log.Error(err)
+	// 				return nil, nil, nil, nil, nil, nil, tracerr.Wrap(err)
+	// 			}
+	// 		}
+	// 	}
+
+	// 	err = tp.StateDB().MakeCheckpoint()
+	// 	if err != nil {
+	// 		return nil, nil, nil, nil, nil, nil, tracerr.Wrap(err)
+	// 	}
+
+	// 	metric.SelectedL1CoordinatorTxs.Set(float64(len(l1CoordinatorTxs)))
+	// 	metric.SelectedL1UserTxs.Set(float64(len(l1UserTxs)))
+	// 	metric.SelectedL2Txs.Set(float64(len(selectedTxs)))
+	// 	metric.DiscardedL2Txs.Set(float64(len(discardedTxs)))
+
+	return accAuths, l1UserTxs, nil
 }

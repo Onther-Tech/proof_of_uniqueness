@@ -31,7 +31,7 @@ SQLConnectionTimeout = "2s"
 
 [StateDB]
 ### Path where the synchronizer StateDB is stored
-Path = "/var/tokamak/statedb"
+Path = "./var/tokamak/statedb"
 ### Number of checkpoints to keep
 Keep = 256
 
@@ -43,9 +43,9 @@ HostWrite     = "localhost"
 ## User of the PostgreSQL write server
 UserWrite     = "postgres"
 ## Password of the PostgreSQL write server
-PasswordWrite = "root"
+PasswordWrite = "123"
 ## Name of the PostgreSQL write server database
-NameWrite     = "postgres"
+NameWrite     = "statedb"
 ## Port of the PostgreSQL read server. If it is not set, the tokamak node will use the postgresql write server configuration
 # PortRead     = 5432
 ## Host of the PostgreSQL read server. If it is not set, the tokamak node will use the postgresql write server configuration
@@ -59,7 +59,8 @@ NameWrite     = "postgres"
 
 [Web3]
 ## Url of the web3 ethereum-node RPC server. Only geth is officially supported
-URL = "http://localhost:8545"
+## URL = "http://localhost:8545"
+URL = "https://rpc.thanos-sepolia.tokamak.network"
 
 [Synchronizer]
 ### Interval between attempts to synchronize a new block from an ethereum node
@@ -71,11 +72,11 @@ StatsUpdateFrequencyDivider = 100
 
 [SmartContracts]
 ## Smart contract address of the rollup contract
-Rollup   = "0xA68D85dF56E733A06443306A095646317B5Fa633"
+Rollup   = "0x3d4810E4F8377a34781A6Ceaab9dAc08E361192d"
 
 [Coordinator]
 ## Ethereum address that the coordinator is using to forge batches
-ForgerAddress = "0x05c23b938a85ab26A36E6314a0D02080E9ca6BeD"
+ForgerAddress = "0x19795e3f46003bb44538708020dae2b4cc8b6425"
 ### Minimum balance the forger address needs to start the coordinator in wei. If It is set to 0, the coordinator will not check the balance
 #MinimumForgeAddressBalance = "0"
 ### Number of confirmation blocks to be sure that the tx has been mined correctly
@@ -98,8 +99,6 @@ SyncRetryInterval = "1s"
 #ForgeDelay = "600s"
 ### Delay after a forged batch if there are no txs to forge. If It is set to 0s, the coordinator will continuously forge even if the batches are empty
 #ForgeNoTxsDelay = "86400s"
-### Interval between calls to the PurgeByExternalDelete function of the l2db which deletes pending txs externally marked by the column `external_delete`
-PurgeByExtDelInterval = "1m"
 ### Enables the coordinator to forge in slots if the empty slots reach the slot deadline
 #MustForgeAtSlotDeadline = true
 ### It will make the coordinator forge at most one batch per slot, only if there are included txs in that batch, or pending l1UserTxs in the smart contract.  Setting this parameter overrides `ForgeDelay`, `ForgeNoTxsDelay`, `MustForgeAtSlotDeadline` and `IgnoreSlotCommitment`.
@@ -137,11 +136,11 @@ InvalidateBlockDelay = 20
 
 [Coordinator.TxSelector]
 ### Path where the TxSelector StateDB is stored
-Path = "/var/tokamak/txselector"
+Path = "./var/tokamak/txselector"
 
 [Coordinator.BatchBuilder]
 ### Path where the BatchBuilder StateDB is stored
-Path = "/var/tokamak/batchbuilder"
+Path = "./var/tokamak/batchbuilder"
 
 [Coordinator.ServerProofs]
 ## Server proof API URLs
@@ -149,9 +148,9 @@ URLs = ["http://localhost:3000"]
 
 [Coordinator.Circuit]
 ## Maximum number of txs supported by the circuit
-MaxTx = 2048
+MaxTx = 100
 ## Maximum number of merkle tree levels supported by the circuit
-NLevels = 32
+NLevels = 5
 
 [Coordinator.EthClient]
 ### Interval between receipt checks of ethereum transactions in the TxManager
@@ -173,9 +172,9 @@ MinGasPrice = 5
 
 [Coordinator.EthClient.Keystore]
 ### Path where the keystore is stored
-Path = "/var/tokamak/ethkeystore"
+Path = "./var/tokamak/ethkeystore"
 ## Password used to decrypt the keys in the keystore
-Password = "yourpasswordhere"
+Password = "123"
 
 [Coordinator.EthClient.ForgeBatchGasCost]
 ### Gas needed to forge an empty batch
@@ -193,7 +192,7 @@ L2Tx = 600
 
 #[Coordinator.Debug]
 ### If this parameter is set, specifies the path where batchInfo is stored in JSON in every step/update of the pipeline
-#BatchPath = "/var/tokamak/batchesdebug"
+#BatchPath = "./var/tokamak/batchesdebug"
 ### If lightScrypt is set, uses light parameters for the ethereum keystore encryption algorithm
 #LightScrypt = false
 ### RollupVerifierIndex is the index of the verifier to use in the Rollup smart contract. The verifier chosen by index must match with the Circuit parameters

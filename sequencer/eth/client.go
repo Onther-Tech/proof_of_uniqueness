@@ -34,10 +34,10 @@ type ClientConfig struct {
 }
 
 const (
-	blocksPerDay = (3600 * 24) / 15 //nolint:gomnd
+	blocksPerDay = 0 //nolint:gomnd
 )
 
-// NewClient creates a new Client to interact with Ethereum and the Hermez smart contracts.
+// NewClient creates a new Client to interact with Ethereum and the Sybil smart contracts.
 func NewClient(client *ethclient.Client, account *accounts.Account, ks *ethKeystore.KeyStore,
 	cfg *ClientConfig) (*Client, error) {
 	ethereumClient, err := NewEthereumClient(client, account, ks, &cfg.Ethereum)

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
-	"time"
 	"tokamak-sybil-resistance/common"
 	"tokamak-sybil-resistance/log"
 
@@ -17,11 +16,14 @@ import (
 
 func newBatchData(batchNum int) common.BatchData {
 	return common.BatchData{
-		L1CoordinatorTxs: []common.L1Tx{},
-		L2Txs:            []common.L2Tx{},
+		// L1CoordinatorTxs: []common.L1Tx{},
 		Batch: common.Batch{
-			BatchNum:  common.BatchNum(batchNum),
-			StateRoot: big.NewInt(0), ExitRoot: big.NewInt(0),
+			BatchNum: common.BatchNum(batchNum),
+
+			AccountRoot: big.NewInt(0),
+			VouchRoot:   big.NewInt(0),
+			ScoreRoot:   big.NewInt(0),
+			ExitRoot:    big.NewInt(0),
 			// CollectedFees:      make(map[common.TokenID]*big.Int),
 		},
 	}
@@ -59,25 +61,24 @@ type Context struct {
 	// queued in a batch
 	rollupConstMaxL1UserTx int
 
-	chainID       uint16
-	idx           int
-	currBlock     common.BlockData
-	currBatch     common.BatchData
-	currBatchNum  int
-	Queues        [][]L1Tx
-	ToForgeNum    int
-	openToForge   int
-	currBatchTest struct {
-		l1CoordinatorTxs []L1Tx
-		l2Txs            []L2Tx
-	}
+	chainID      uint64
+	idx          int
+	currBlock    common.BlockData
+	currBatch    common.BatchData
+	currBatchNum int
+	Queues       [][]L1Tx
+	ToForgeNum   int
+	openToForge  int
+	// currBatchTest struct {
+	// 	l1CoordinatorTxs []L1Tx
+	// }
 	blockNum int64
 
 	extra contextExtra
 }
 
 // NewContext returns a new Context
-func NewContext(chainID uint16, rollupConstMaxL1UserTx int) *Context {
+func NewContext(chainID uint64, rollupConstMaxL1UserTx int) *Context {
 	currBatchNum := 1 // The protocol defines the first batchNum to be 1
 	return &Context{
 		Accounts:              make(map[string]*Account),
@@ -128,16 +129,6 @@ type L1Tx struct {
 	fromIdxName string
 	toIdxName   string
 	L1Tx        common.L1Tx
-}
-
-// L2Tx is the data structure used internally for transaction test generation,
-// which contains a common.L2Tx data plus some intermediate data for the
-// transaction generation.
-type L2Tx struct {
-	lineNum     int
-	fromIdxName string
-	toIdxName   string
-	L2Tx        common.L2Tx
 }
 
 // GenerateBlocks returns an array of BlockData for a given set made of a
@@ -230,37 +221,65 @@ func (tc *Context) generateBlocks() ([]common.BlockData, error) {
 				return nil, common.Wrap(err)
 			}
 		case common.TxTypeCreateVouch:
-			tx := common.L2Tx{
-				Amount: big.NewInt(0),
-				// Fee:         common.FeeSelector(inst.Fee),
-				Type:        common.TxTypeCreateVouch,
-				EthBlockNum: tc.blockNum,
+			// tx := common.L2Tx{
+			// 	Amount: big.NewInt(0),
+			// 	// Fee:         common.FeeSelector(inst.Fee),
+			// 	Type:        common.TxTypeCreateVouch,
+			// 	EthBlockNum: tc.blockNum,
+			// }
+			// // when converted to PoolL2Tx BatchNum parameter is lost
+			// tx.BatchNum = common.BatchNum(tc.currBatchNum)
+			// testTx := L2Tx{
+			// 	lineNum:     inst.LineNum,
+			// 	fromIdxName: inst.From,
+			// 	toIdxName:   inst.To,
+			// 	L2Tx:        tx,
+			// }
+			// tc.currBatchTest.l2Txs = append(tc.currBatchTest.l2Txs, testTx)
+			tx := common.L1Tx{
+				Amount:        big.NewInt(0),
+				DepositAmount: big.NewInt(0),
+				Type:          common.TxTypeCreateVouch,
 			}
-			// when converted to PoolL2Tx BatchNum parameter is lost
-			tx.BatchNum = common.BatchNum(tc.currBatchNum)
-			testTx := L2Tx{
+			testTx := L1Tx{
 				lineNum:     inst.LineNum,
 				fromIdxName: inst.From,
 				toIdxName:   inst.To,
-				L2Tx:        tx,
+				L1Tx:        tx,
 			}
-			tc.currBatchTest.l2Txs = append(tc.currBatchTest.l2Txs, testTx)
+			if err := tc.addToL1UserQueue(testTx); err != nil {
+				return nil, common.Wrap(err)
+			}
 		case common.TxTypeDeleteVouch:
-			tx := common.L2Tx{
-				Amount: big.NewInt(0),
-				// Fee:         common.FeeSelector(inst.Fee),
-				Type:        common.TxTypeDeleteVouch,
-				EthBlockNum: tc.blockNum,
+			// tx := common.L2Tx{
+			// 	Amount: big.NewInt(0),
+			// 	// Fee:         common.FeeSelector(inst.Fee),
+			// 	Type:        common.TxTypeDeleteVouch,
+			// 	EthBlockNum: tc.blockNum,
+			// }
+			// // when converted to PoolL2Tx BatchNum parameter is lost
+			// tx.BatchNum = common.BatchNum(tc.currBatchNum)
+			// testTx := L2Tx{
+			// 	lineNum:     inst.LineNum,
+			// 	fromIdxName: inst.From,
+			// 	toIdxName:   inst.To,
+			// 	L2Tx:        tx,
+			// }
+			// tc.currBatchTest.l2Txs = append(tc.currBatchTest.l2Txs, testTx)
+			tx := common.L1Tx{
+				Amount:        big.NewInt(0),
+				DepositAmount: big.NewInt(0),
+				Type:          common.TxTypeDeleteVouch,
 			}
-			// when converted to PoolL2Tx BatchNum parameter is lost
-			tx.BatchNum = common.BatchNum(tc.currBatchNum)
-			testTx := L2Tx{
+			testTx := L1Tx{
 				lineNum:     inst.LineNum,
 				fromIdxName: inst.From,
 				toIdxName:   inst.To,
-				L2Tx:        tx,
+				L1Tx:        tx,
 			}
-			tc.currBatchTest.l2Txs = append(tc.currBatchTest.l2Txs, testTx)
+			if err := tc.addToL1UserQueue(testTx); err != nil {
+				return nil, common.Wrap(err)
+			}
 		case common.TxTypeForceExit: // tx source: L1UserTx
 			tx := common.L1Tx{
 				ToIdx: common.AccountIdx(1), // as is an Exit
@@ -278,32 +297,32 @@ func (tc *Context) generateBlocks() ([]common.BlockData, error) {
 			if err := tc.addToL1UserQueue(testTx); err != nil {
 				return nil, common.Wrap(err)
 			}
-		case common.TxTypeExit: // tx source: L2Tx
-			tx := common.L2Tx{
-				ToIdx:       common.AccountIdx(1), // as is an Exit
-				Amount:      inst.Amount,
-				Type:        common.TxTypeExit,
-				EthBlockNum: tc.blockNum,
-			}
-			// when converted to PoolL2Tx BatchNum parameter is lost
-			tx.BatchNum = common.BatchNum(tc.currBatchNum)
-			testTx := L2Tx{
-				lineNum:     inst.LineNum,
-				fromIdxName: inst.From,
-				toIdxName:   inst.To,
-				L2Tx:        tx,
-			}
-			tc.currBatchTest.l2Txs = append(tc.currBatchTest.l2Txs, testTx)
-		case TypeNewBatch:
-			for _, tx := range tc.currBatchTest.l1CoordinatorTxs {
-				tc.l1CreatedAccounts[tx.fromIdxName] = tc.Accounts[tx.fromIdxName]
-				tc.AccountsByIdx[tc.idx] = tc.Accounts[tx.fromIdxName]
-				tc.idx++
-			}
-			if err := tc.setIdxs(); err != nil {
-				log.Error(err)
-				return nil, common.Wrap(err)
-			}
+		// case common.TxTypeExit: // tx source: L2Tx
+		// tx := common.L2Tx{
+		// 	ToIdx:       common.AccountIdx(1), // as is an Exit
+		// 	Amount:      inst.Amount,
+		// 	Type:        common.TxTypeExit,
+		// 	EthBlockNum: tc.blockNum,
+		// }
+		// // when converted to PoolL2Tx BatchNum parameter is lost
+		// tx.BatchNum = common.BatchNum(tc.currBatchNum)
+		// testTx := L2Tx{
+		// 	lineNum:     inst.LineNum,
+		// 	fromIdxName: inst.From,
+		// 	toIdxName:   inst.To,
+		// 	L2Tx:        tx,
+		// }
+		// tc.currBatchTest.l2Txs = append(tc.currBatchTest.l2Txs, testTx)
+		// case TypeNewBatch:
+		// 	for _, tx := range tc.currBatchTest.l1CoordinatorTxs {
+		// 		tc.l1CreatedAccounts[tx.fromIdxName] = tc.Accounts[tx.fromIdxName]
+		// 		tc.AccountsByIdx[tc.idx] = tc.Accounts[tx.fromIdxName]
+		// 		tc.idx++
+		// 	}
+		// 	if err := tc.setIdxs(); err != nil {
+		// 		log.Error(err)
+		// 		return nil, common.Wrap(err)
+		// 	}
 		case TypeNewBatchL1:
 			// for each L1UserTx of the Queues[ToForgeNum], accumulate Txs into map
 			for _, tx := range tc.Queues[tc.ToForgeNum] {
@@ -344,49 +363,49 @@ func (tc *Context) generateBlocks() ([]common.BlockData, error) {
 // setIdxs sets the Idxs to the transactions of the tc.currBatch
 func (tc *Context) setIdxs() error {
 	// once Idxs are calculated, update transactions to use the new Idxs
-	for i := 0; i < len(tc.currBatchTest.l2Txs); i++ {
-		testTx := &tc.currBatchTest.l2Txs[i]
+	// for i := 0; i < len(tc.currBatchTest.l2Txs); i++ {
+	// 	testTx := &tc.currBatchTest.l2Txs[i]
 
-		if tc.Accounts[testTx.fromIdxName] == nil {
-			return common.Wrap(fmt.Errorf("line %d: %s from User %s "+
-				"while account not created yet",
-				testTx.lineNum, testTx.L2Tx.Type, testTx.fromIdxName))
-		}
-		if testTx.L2Tx.Type == common.TxTypeCreateVouch || testTx.L2Tx.Type == common.TxTypeDeleteVouch {
-			if _, ok := tc.Accounts[testTx.toIdxName]; !ok {
-				return common.Wrap(fmt.Errorf("line %d: Can not Voute for a non "+
-					"existing account. Batch %d, ToIdx name: %s",
-					testTx.lineNum, tc.currBatchNum, testTx.toIdxName))
-			}
-		}
-		tc.Accounts[testTx.fromIdxName].Nonce++
-		// next line is commented to avoid Blockchain L2Txs to have
-		// Nonce different from 0, as from Blockchain those
-		// transactions will come without Nonce
-		// testTx.L2Tx.Nonce = tc.Users[testTx.fromIdxName].Accounts[testTx.tokenID].Nonce
+	// 	if tc.Accounts[testTx.fromIdxName] == nil {
+	// 		return common.Wrap(fmt.Errorf("line %d: %s from User %s "+
+	// 			"while account not created yet",
+	// 			testTx.lineNum, testTx.L2Tx.Type, testTx.fromIdxName))
+	// 	}
+	// 	if testTx.L2Tx.Type == common.TxTypeCreateVouch || testTx.L2Tx.Type == common.TxTypeDeleteVouch {
+	// 		if _, ok := tc.Accounts[testTx.toIdxName]; !ok {
+	// 			return common.Wrap(fmt.Errorf("line %d: Can not Voute for a non "+
+	// 				"existing account. Batch %d, ToIdx name: %s",
+	// 				testTx.lineNum, tc.currBatchNum, testTx.toIdxName))
+	// 		}
+	// 	}
+	// 	tc.Accounts[testTx.fromIdxName].Nonce++
+	// 	// next line is commented to avoid Blockchain L2Txs to have
+	// 	// Nonce different from 0, as from Blockchain those
+	// 	// transactions will come without Nonce
+	// 	// testTx.L2Tx.Nonce = tc.Users[testTx.fromIdxName].Accounts[testTx.tokenID].Nonce
 
-		// set real Idx
-		testTx.L2Tx.FromIdx = tc.Accounts[testTx.fromIdxName].Idx
-		if testTx.L2Tx.Type == common.TxTypeCreateVouch || testTx.L2Tx.Type == common.TxTypeDeleteVouch {
-			testTx.L2Tx.ToIdx = tc.Accounts[testTx.toIdxName].Idx
-		}
-		// in case Type==Exit, ToIdx=1, already set at the
-		// GenerateBlocks main switch inside TxTypeExit case
-		nTx, err := common.NewL2Tx(&testTx.L2Tx)
-		if err != nil {
-			return common.Wrap(fmt.Errorf("line %d: %s", testTx.lineNum, err.Error()))
-		}
-		testTx.L2Tx = *nTx
+	// 	// set real Idx
+	// 	testTx.L2Tx.FromIdx = tc.Accounts[testTx.fromIdxName].Idx
+	// 	if testTx.L2Tx.Type == common.TxTypeCreateVouch || testTx.L2Tx.Type == common.TxTypeDeleteVouch {
+	// 		testTx.L2Tx.ToIdx = tc.Accounts[testTx.toIdxName].Idx
+	// 	}
+	// 	// in case Type==Exit, ToIdx=1, already set at the
+	// 	// GenerateBlocks main switch inside TxTypeExit case
+	// 	nTx, err := common.NewL2Tx(&testTx.L2Tx)
+	// 	if err != nil {
+	// 		return common.Wrap(fmt.Errorf("line %d: %s", testTx.lineNum, err.Error()))
+	// 	}
+	// 	testTx.L2Tx = *nTx
 
-		tc.currBatch.L2Txs = append(tc.currBatch.L2Txs, testTx.L2Tx)
-	}
+	// 	tc.currBatch.L2Txs = append(tc.currBatch.L2Txs, testTx.L2Tx)
+	// }
 
 	tc.currBatch.Batch.LastIdx = int64(tc.idx - 1) // `-1` because tc.idx is the next available idx
 	tc.currBlock.Rollup.Batches = append(tc.currBlock.Rollup.Batches, tc.currBatch)
 	tc.currBatchNum++
 	tc.currBatch = newBatchData(tc.currBatchNum)
-	tc.currBatchTest.l1CoordinatorTxs = nil
-	tc.currBatchTest.l2Txs = nil
+	// tc.currBatchTest.l1CoordinatorTxs = nil
+	// tc.currBatchTest.l2Txs = nil
 	return nil
 }
 
@@ -447,22 +466,22 @@ func (tc *Context) checkIfAccountExists(tf string, inst Instruction) error {
 
 // GeneratePoolL2Txs returns an array of common.PoolL2Tx from a given set made
 // of a string. It uses the users (keys) of the Context.
-func (tc *Context) GeneratePoolL2Txs(set string) ([]common.PoolL2Tx, error) {
-	parser := newParser(strings.NewReader(set))
-	parsedSet, err := parser.parse()
-	if err != nil {
-		return nil, common.Wrap(err)
-	}
-	if parsedSet.typ != SetTypePoolL2 {
-		return nil, common.Wrap(fmt.Errorf("expected set type: %s, found: %s",
-			SetTypePoolL2, parsedSet.typ))
-	}
+// func (tc *Context) GeneratePoolL2Txs(set string) ([]common.PoolL2Tx, error) {
+// 	parser := newParser(strings.NewReader(set))
+// 	parsedSet, err := parser.parse()
+// 	if err != nil {
+// 		return nil, common.Wrap(err)
+// 	}
+// 	if parsedSet.typ != SetTypePoolL2 {
+// 		return nil, common.Wrap(fmt.Errorf("expected set type: %s, found: %s",
+// 			SetTypePoolL2, parsedSet.typ))
+// 	}
 
-	tc.instructions = parsedSet.instructions
-	tc.accountNames = parsedSet.users
+// 	tc.instructions = parsedSet.instructions
+// 	tc.accountNames = parsedSet.users
 
-	return tc.generatePoolL2Txs()
-}
+// 	return tc.generatePoolL2Txs()
+// }
 
 // GeneratePoolL2TxsFromInstructions returns an array of common.PoolL2Tx from a
 // given set made of instructions. It uses the users (keys) of the Context.
@@ -487,93 +506,93 @@ func (tc *Context) GeneratePoolL2Txs(set string) ([]common.PoolL2Tx, error) {
 // 	return tc.generatePoolL2Txs()
 // }
 
-func (tc *Context) generatePoolL2Txs() ([]common.PoolL2Tx, error) {
-	tc.generateKeys(tc.accountNames)
+// func (tc *Context) generatePoolL2Txs() ([]common.PoolL2Tx, error) {
+// 	tc.generateKeys(tc.accountNames)
 
-	txs := []common.PoolL2Tx{}
-	for _, inst := range tc.instructions {
-		switch inst.Typ {
-		case common.TxTypeCreateVouch, common.TxTypeDeleteVouch:
-			if err := tc.checkIfAccountExists(inst.From, inst); err != nil {
-				log.Error(err)
-				return nil, common.Wrap(fmt.Errorf("line %d: %s", inst.LineNum, err.Error()))
-			}
-			// if inst.Typ == common.TxTypeTransfer {
-			// 	// if TxTypeTransfer, need to exist the ToIdx account
-			// 	if err := tc.checkIfAccountExists(inst.To, inst); err != nil {
-			// 		log.Error(err)
-			// 		return nil, common.Wrap(fmt.Errorf("Line %d: %s", inst.LineNum, err.Error()))
-			// 	}
-			// }
-			// if account of receiver does not exist, don't use
-			// ToIdx, and use only ToEthAddr & ToBJJ
-			tx := common.PoolL2Tx{
-				FromIdx:     tc.Accounts[inst.From].Idx,
-				Amount:      big.NewInt(0),
-				Fee:         common.FeeSelector(inst.Fee),
-				Nonce:       tc.Accounts[inst.From].Nonce,
-				State:       common.PoolL2TxStatePending,
-				Timestamp:   time.Now(),
-				RqToEthAddr: common.EmptyAddr,
-				RqToBJJ:     common.EmptyBJJComp,
-				Type:        inst.Typ,
-			}
-			tc.Accounts[inst.From].Nonce++
-			if tx.Type == common.TxTypeCreateVouch || tx.Type == common.TxTypeDeleteVouch {
-				tx.ToIdx = tc.Accounts[inst.To].Idx
-				tx.ToEthAddr = common.EmptyAddr
-				tx.ToBJJ = common.EmptyBJJComp
-			}
-			nTx, err := common.NewPoolL2Tx(&tx)
-			if err != nil {
-				return nil, common.Wrap(fmt.Errorf("line %d: %s", inst.LineNum, err.Error()))
-			}
-			tx = *nTx
-			// perform signature and set it to tx.Signature
-			toSign, err := tx.HashToSign(tc.chainID)
-			if err != nil {
-				return nil, common.Wrap(fmt.Errorf("line %d: %s", inst.LineNum, err.Error()))
-			}
-			sig := tc.Accounts[inst.From].BJJ.SignPoseidon(toSign)
-			tx.Signature = sig.Compress()
+// 	txs := []common.PoolL2Tx{}
+// 	for _, inst := range tc.instructions {
+// 		switch inst.Typ {
+// 		case common.TxTypeCreateVouch, common.TxTypeDeleteVouch:
+// 			if err := tc.checkIfAccountExists(inst.From, inst); err != nil {
+// 				log.Error(err)
+// 				return nil, common.Wrap(fmt.Errorf("line %d: %s", inst.LineNum, err.Error()))
+// 			}
+// 			// if inst.Typ == common.TxTypeTransfer {
+// 			// 	// if TxTypeTransfer, need to exist the ToIdx account
+// 			// 	if err := tc.checkIfAccountExists(inst.To, inst); err != nil {
+// 			// 		log.Error(err)
+// 			// 		return nil, common.Wrap(fmt.Errorf("Line %d: %s", inst.LineNum, err.Error()))
+// 			// 	}
+// 			// }
+// 			// if account of receiver does not exist, don't use
+// 			// ToIdx, and use only ToEthAddr & ToBJJ
+// 			tx := common.PoolL2Tx{
+// 				FromIdx:     tc.Accounts[inst.From].Idx,
+// 				Amount:      big.NewInt(0),
+// 				Fee:         common.FeeSelector(inst.Fee),
+// 				Nonce:       tc.Accounts[inst.From].Nonce,
+// 				State:       common.PoolL2TxStatePending,
+// 				Timestamp:   time.Now(),
+// 				RqToEthAddr: common.EmptyAddr,
+// 				RqToBJJ:     common.EmptyBJJComp,
+// 				Type:        inst.Typ,
+// 			}
+// 			tc.Accounts[inst.From].Nonce++
+// 			if tx.Type == common.TxTypeCreateVouch || tx.Type == common.TxTypeDeleteVouch {
+// 				tx.ToIdx = tc.Accounts[inst.To].Idx
+// 				tx.ToEthAddr = common.EmptyAddr
+// 				tx.ToBJJ = common.EmptyBJJComp
+// 			}
+// 			nTx, err := common.NewPoolL2Tx(&tx)
+// 			if err != nil {
+// 				return nil, common.Wrap(fmt.Errorf("line %d: %s", inst.LineNum, err.Error()))
+// 			}
+// 			tx = *nTx
+// 			// perform signature and set it to tx.Signature
+// 			toSign, err := tx.HashToSign(tc.chainID)
+// 			if err != nil {
+// 				return nil, common.Wrap(fmt.Errorf("line %d: %s", inst.LineNum, err.Error()))
+// 			}
+// 			sig := tc.Accounts[inst.From].BJJ.SignPoseidon(toSign)
+// 			tx.Signature = sig.Compress()
 
-			txs = append(txs, tx)
+// 			txs = append(txs, tx)
 
-		case common.TxTypeExit:
-			tx := common.PoolL2Tx{
-				FromIdx:   tc.Accounts[inst.From].Idx,
-				ToIdx:     common.AccountIdx(1), // as is an Exit
-				Fee:       common.FeeSelector(inst.Fee),
-				Amount:    inst.Amount,
-				ToEthAddr: common.EmptyAddr,
-				ToBJJ:     common.EmptyBJJComp,
-				Nonce:     tc.Accounts[inst.From].Nonce,
-				State:     common.PoolL2TxStatePending,
-				Type:      common.TxTypeExit,
-			}
-			tc.Accounts[inst.From].Nonce++
-			nTx, err := common.NewPoolL2Tx(&tx)
-			if err != nil {
-				return nil, common.Wrap(fmt.Errorf("line %d: %s", inst.LineNum, err.Error()))
-			}
-			tx = *nTx
-			// perform signature and set it to tx.Signature
-			toSign, err := tx.HashToSign(tc.chainID)
-			if err != nil {
-				return nil, common.Wrap(fmt.Errorf("line %d: %s", inst.LineNum, err.Error()))
-			}
-			sig := tc.Accounts[inst.From].BJJ.SignPoseidon(toSign)
-			tx.Signature = sig.Compress()
-			txs = append(txs, tx)
-		default:
-			return nil,
-				common.Wrap(fmt.Errorf("line %d: instruction type unrecognized: %s",
-					inst.LineNum, inst.Typ))
-		}
-	}
+// 		case common.TxTypeExit:
+// 			tx := common.PoolL2Tx{
+// 				FromIdx:   tc.Accounts[inst.From].Idx,
+// 				ToIdx:     common.AccountIdx(1), // as is an Exit
+// 				Fee:       common.FeeSelector(inst.Fee),
+// 				Amount:    inst.Amount,
+// 				ToEthAddr: common.EmptyAddr,
+// 				ToBJJ:     common.EmptyBJJComp,
+// 				Nonce:     tc.Accounts[inst.From].Nonce,
+// 				State:     common.PoolL2TxStatePending,
+// 				Type:      common.TxTypeExit,
+// 			}
+// 			tc.Accounts[inst.From].Nonce++
+// 			nTx, err := common.NewPoolL2Tx(&tx)
+// 			if err != nil {
+// 				return nil, common.Wrap(fmt.Errorf("line %d: %s", inst.LineNum, err.Error()))
+// 			}
+// 			tx = *nTx
+// 			// perform signature and set it to tx.Signature
+// 			toSign, err := tx.HashToSign(tc.chainID)
+// 			if err != nil {
+// 				return nil, common.Wrap(fmt.Errorf("line %d: %s", inst.LineNum, err.Error()))
+// 			}
+// 			sig := tc.Accounts[inst.From].BJJ.SignPoseidon(toSign)
+// 			tx.Signature = sig.Compress()
+// 			txs = append(txs, tx)
+// 		default:
+// 			return nil,
+// 				common.Wrap(fmt.Errorf("line %d: instruction type unrecognized: %s",
+// 					inst.LineNum, inst.Typ))
+// 		}
+// 	}
 
-	return txs, nil
-}
+// 	return txs, nil
+// }
 
 // RestartNonces sets all the Users.Accounts.Nonces to 0
 func (tc *Context) RestartNonces() {
@@ -758,12 +777,12 @@ func (tc *Context) FillBlocksExtra(blocks []common.BlockData, cfg *ConfigExtra) 
 				tc.extra.toForgeL1TxsNum++
 			}
 
-			batchNum := batch.Batch.BatchNum
-			for k := range batch.L1CoordinatorTxs {
-				tx := &batch.L1CoordinatorTxs[k]
-				tx.BatchNum = &batchNum
-				tx.EthBlockNum = batch.Batch.EthBlockNum
-			}
+			// batchNum := batch.Batch.BatchNum
+			// for k := range batch.L1CoordinatorTxs {
+			// 	tx := &batch.L1CoordinatorTxs[k]
+			// 	tx.BatchNum = &batchNum
+			// 	tx.EthBlockNum = batch.Batch.EthBlockNum
+			// }
 
 			// TODO: default value is nil but the db column type is not nullable
 			batch.Batch.GasPrice = big.NewInt(0)
@@ -781,9 +800,9 @@ func (tc *Context) FillBlocksExtra(blocks []common.BlockData, cfg *ConfigExtra) 
 					l1Txs = append(l1Txs, &tc.Queues[*batch.Batch.ForgeL1TxsNum][k].L1Tx)
 				}
 			}
-			for k := range batch.L1CoordinatorTxs {
-				l1Txs = append(l1Txs, &batch.L1CoordinatorTxs[k])
-			}
+			// for k := range batch.L1CoordinatorTxs {
+			// 	l1Txs = append(l1Txs, &batch.L1CoordinatorTxs[k])
+			// }
 			for k := range l1Txs {
 				tx := l1Txs[k]
 				if tx.Type == common.TxTypeCreateAccountDeposit {
@@ -812,44 +831,44 @@ func (tc *Context) FillBlocksExtra(blocks []common.BlockData, cfg *ConfigExtra) 
 	}
 
 	// Fill expected positions in L1CoordinatorTxs and L2Txs
-	for i := range blocks {
-		block := &blocks[i]
-		for j := range block.Rollup.Batches {
-			batch := &block.Rollup.Batches[j]
-			position := 0
-			if batch.L1Batch {
-				position = len(tc.Queues[*batch.Batch.ForgeL1TxsNum])
-			}
-			for k := range batch.L1CoordinatorTxs {
-				tx := &batch.L1CoordinatorTxs[k]
-				tx.Position = position
-				position++
-				tx.EffectiveAmount = big.NewInt(0)
-				tx.EffectiveDepositAmount = big.NewInt(0)
-				nTx, err := common.NewL1Tx(tx)
-				if err != nil {
-					return common.Wrap(err)
-				}
-				*tx = *nTx
-			}
-			for k := range batch.L2Txs {
-				tx := &batch.L2Txs[k]
-				tx.Position = position
-				position++
-				tx.Nonce = tc.extra.nonces[tx.FromIdx]
-				// tx.TokenID = tc.AccountsByIdx[int(tx.FromIdx)].TokenID
-				tc.extra.nonces[tx.FromIdx]++
-				if err := tx.SetID(); err != nil {
-					return common.Wrap(err)
-				}
-				nTx, err := common.NewL2Tx(tx)
-				if err != nil {
-					return common.Wrap(err)
-				}
-				*tx = *nTx
-			}
-		}
-	}
+	// for i := range blocks {
+	// 	block := &blocks[i]
+	// 	for j := range block.Rollup.Batches {
+	// 		batch := &block.Rollup.Batches[j]
+	// 		position := 0
+	// 		if batch.L1Batch {
+	// 			position = len(tc.Queues[*batch.Batch.ForgeL1TxsNum])
+	// 		}
+	// 		for k := range batch.L1CoordinatorTxs {
+	// 			tx := &batch.L1CoordinatorTxs[k]
+	// 			tx.Position = position
+	// 			position++
+	// 			tx.EffectiveAmount = big.NewInt(0)
+	// 			tx.EffectiveDepositAmount = big.NewInt(0)
+	// 			nTx, err := common.NewL1Tx(tx)
+	// 			if err != nil {
+	// 				return common.Wrap(err)
+	// 			}
+	// 			*tx = *nTx
+	// 		}
+	// 		for k := range batch.L2Txs {
+	// 			tx := &batch.L2Txs[k]
+	// 			tx.Position = position
+	// 			position++
+	// 			tx.Nonce = tc.extra.nonces[tx.FromIdx]
+	// 			// tx.TokenID = tc.AccountsByIdx[int(tx.FromIdx)].TokenID
+	// 			tc.extra.nonces[tx.FromIdx]++
+	// 			if err := tx.SetID(); err != nil {
+	// 				return common.Wrap(err)
+	// 			}
+	// 			nTx, err := common.NewL2Tx(tx)
+	// 			if err != nil {
+	// 				return common.Wrap(err)
+	// 			}
+	// 			*tx = *nTx
+	// 		}
+	// 	}
+	// }
 
 	// Fill ExitTree (only AccountIdx and Balance)
 	for i := range blocks {
@@ -870,48 +889,48 @@ func (tc *Context) FillBlocksExtra(blocks []common.BlockData, cfg *ConfigExtra) 
 					}
 				}
 			}
-			for k := range batch.L2Txs {
-				tx := &batch.L2Txs[k]
-				if tx.Type == common.TxTypeExit {
-					batch.ExitTree = append(batch.ExitTree, common.ExitInfo{
-						BatchNum:   batch.Batch.BatchNum,
-						AccountIdx: tx.FromIdx,
-						Balance:    tx.Amount,
-					})
-				}
-				// fee, err := common.CalcFeeAmount(tx.Amount, tx.Fee)
-				// if err != nil {
-				// 	return common.Wrap(err)
-				// }
+			// for k := range batch.L2Txs {
+			// 	tx := &batch.L2Txs[k]
+			// 	if tx.Type == common.TxTypeExit {
+			// 		batch.ExitTree = append(batch.ExitTree, common.ExitInfo{
+			// 			BatchNum:   batch.Batch.BatchNum,
+			// 			AccountIdx: tx.FromIdx,
+			// 			Balance:    tx.Amount,
+			// 		})
+			// 	}
+			// fee, err := common.CalcFeeAmount(tx.Amount, tx.Fee)
+			// if err != nil {
+			// 	return common.Wrap(err)
+			// }
 
-				// fromAcc, ok := tc.AccountsByIdx[int(tx.FromIdx)]
-				// if !ok {
-				// 	return common.Wrap(fmt.Errorf("L2tx.FromIdx idx: %v not found", tx.FromIdx))
-				// }
+			// fromAcc, ok := tc.AccountsByIdx[int(tx.FromIdx)]
+			// if !ok {
+			// 	return common.Wrap(fmt.Errorf("L2tx.FromIdx idx: %v not found", tx.FromIdx))
+			// }
 
-				// Find the idx of the CoordUser for the
-				// TokenID, and if it exists, add the fee to
-				// the collectedFees.  Only consider the
-				// coordinator account to receive fee if it was
-				// created in this or a previous batch
-				// if acc, ok := tc.l1CreatedAccounts[cfg.CoordUser]; ok &&
-				// 	common.BatchNum(acc.BatchNum) <= batch.Batch.BatchNum {
-				// 	found := false
-				// 	for _, idx := range batch.Batch.FeeIdxsCoordinator {
-				// 		if idx == common.AccountIdx(acc.Idx) {
-				// 			found = true
-				// 			break
-				// 		}
-				// 	}
-				// 	// if !found {
-				// 	// 	batch.Batch.FeeIdxsCoordinator = append(batch.Batch.FeeIdxsCoordinator,
-				// 	// 		common.AccountIdx(acc.Idx))
-				// 	// 	batch.Batch.CollectedFees[fromAcc.TokenID] = big.NewInt(0)
-				// 	// }
-				// 	// collected := batch.Batch.CollectedFees[fromAcc.TokenID]
-				// 	// collected.Add(collected, fee)
-				// }
-			}
+			// Find the idx of the CoordUser for the
+			// TokenID, and if it exists, add the fee to
+			// the collectedFees.  Only consider the
+			// coordinator account to receive fee if it was
+			// created in this or a previous batch
+			// if acc, ok := tc.l1CreatedAccounts[cfg.CoordUser]; ok &&
+			// 	common.BatchNum(acc.BatchNum) <= batch.Batch.BatchNum {
+			// 	found := false
+			// 	for _, idx := range batch.Batch.FeeIdxsCoordinator {
+			// 		if idx == common.AccountIdx(acc.Idx) {
+			// 			found = true
+			// 			break
+			// 		}
+			// 	}
+			// 	// if !found {
+			// 	// 	batch.Batch.FeeIdxsCoordinator = append(batch.Batch.FeeIdxsCoordinator,
+			// 	// 		common.AccountIdx(acc.Idx))
+			// 	// 	batch.Batch.CollectedFees[fromAcc.TokenID] = big.NewInt(0)
+			// 	// }
+			// 	// collected := batch.Batch.CollectedFees[fromAcc.TokenID]
+			// 	// collected.Add(collected, fee)
+			// }
+			// }
 		}
 	}
 	return nil

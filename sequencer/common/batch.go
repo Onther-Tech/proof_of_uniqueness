@@ -15,15 +15,19 @@ type Batch struct {
 	BatchNum  BatchNum       `meddler:"batch_num"`
 	EthTxHash ethCommon.Hash `meddler:"eth_tx_hash"`
 	// Ethereum block in which the batch is forged
-	EthBlockNum   int64             `meddler:"eth_block_num"`
-	ForgerAddr    ethCommon.Address `meddler:"forger_addr"`
-	StateRoot     *big.Int          `meddler:"state_root,bigint"`
-	NumAccounts   int               `meddler:"num_accounts"`
-	LastIdx       int64             `meddler:"last_idx"`
-	ExitRoot      *big.Int          `meddler:"exit_root,bigint"`
-	GasUsed       uint64            `meddler:"gas_used"`
-	GasPrice      *big.Int          `meddler:"gas_price,bigint"`
-	EtherPriceUSD float64           `meddler:"ether_price_usd"`
+	EthBlockNum int64             `meddler:"eth_block_num"`
+	ForgerAddr  ethCommon.Address `meddler:"forger_addr"`
+
+	AccountRoot *big.Int `meddler:"account_root,bigint"`
+	VouchRoot   *big.Int `meddler:"vouch_root,bigint"`
+	ScoreRoot   *big.Int `meddler:"score_root,bigint"`
+	ExitRoot    *big.Int `meddler:"exit_root,bigint"`
+
+	NumAccounts   int      `meddler:"num_accounts"`
+	LastIdx       int64    `meddler:"last_idx"`
+	GasUsed       uint64   `meddler:"gas_used"`
+	GasPrice      *big.Int `meddler:"gas_price,bigint"`
+	EtherPriceUSD float64  `meddler:"ether_price_usd"`
 	// ForgeL1TxsNum is optional, Only when the batch forges L1 txs. Identifier that corresponds
 	// to the group of L1 txs forged in the current batch.
 	ForgeL1TxsNum *int64   `meddler:"forge_l1_txs_num"`
@@ -60,24 +64,20 @@ func (bn BatchNum) BigInt() *big.Int {
 type BatchData struct {
 	L1Batch bool
 	// L1UserTxs that were forged in the batch
-	L1UserTxs        []L1Tx
-	L1CoordinatorTxs []L1Tx
-	L2Txs            []L2Tx
-	CreatedAccounts  []Account
-	UpdatedAccounts  []AccountUpdate
-	ExitTree         []ExitInfo
-	Batch            Batch
+	L1UserTxs []L1Tx
+	CreatedAccounts []Account
+	UpdatedAccounts []AccountUpdate
+	ExitTree        []ExitInfo
+	Batch           Batch
 }
 
 // NewBatchData creates an empty BatchData with the slices initialized.
 func NewBatchData() *BatchData {
 	return &BatchData{
-		L1Batch: false,
-		// L1UserTxs:        make([]common.L1Tx, 0),
-		L1CoordinatorTxs: make([]L1Tx, 0),
-		L2Txs:            make([]L2Tx, 0),
-		CreatedAccounts:  make([]Account, 0),
-		ExitTree:         make([]ExitInfo, 0),
-		Batch:            Batch{},
+		L1Batch:   false,
+		L1UserTxs: make([]L1Tx, 0),
+		CreatedAccounts: make([]Account, 0),
+		ExitTree:        make([]ExitInfo, 0),
+		Batch:           Batch{},
 	}
 }

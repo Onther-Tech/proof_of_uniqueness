@@ -51,17 +51,17 @@ type NetworkAPI struct {
 
 // StateAPI is an object representing the node and network state exposed via the API
 type StateAPI struct {
-	NodePublicInfo NodePublicInfo        `json:"node"`
-	Network        NetworkAPI            `json:"network"`
-	Metrics        MetricsAPI            `json:"metrics"`
-	Rollup         RollupVariablesAPI    `json:"rollup"`
-	RecommendedFee common.RecommendedFee `json:"recommendedFee"`
+	NodePublicInfo NodePublicInfo     `json:"node"`
+	Network        NetworkAPI         `json:"network"`
+	Metrics        MetricsAPI         `json:"metrics"`
+	Rollup         RollupVariablesAPI `json:"rollup"`
+	// RecommendedFee common.RecommendedFee `json:"recommendedFee"`
 }
 
 // Constants contains network constants
 type Constants struct {
 	common.SCConsts
-	ChainID       uint16
+	ChainID       uint64
 	HermezAddress ethCommon.Address
 }
 
@@ -100,6 +100,26 @@ func (hdb *HistoryDB) SetConstants(constants *Constants) error {
 	}
 	_, err = hdb.dbWrite.Exec(
 		"UPDATE node_info SET constants = $1 WHERE item_id = 1;",
+		values[0],
+	)
+	return common.Wrap(err)
+}
+
+// SetStateInternalAPI sets the StateAPI
+func (hdb *HistoryDB) SetStateInternalAPI(stateAPI *StateAPI) error {
+	// if stateAPI.Network.LastBatch != nil {
+	// stateAPI.Network.LastBatch.CollectedFeesAPI =
+	// 	apitypes.NewCollectedFeesAPI(stateAPI.Network.LastBatch.CollectedFeesDB)
+	// }
+	_stateAPI := struct {
+		StateAPI *StateAPI `meddler:"state,json"`
+	}{stateAPI}
+	values, err := meddler.Default.Values(&_stateAPI, false)
+	if err != nil {
+		return common.Wrap(err)
+	}
+	_, err = hdb.dbWrite.Exec(
+		"UPDATE node_info SET state = $1 WHERE item_id = 1;",
 		values[0],
 	)
 	return common.Wrap(err)

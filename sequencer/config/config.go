@@ -109,14 +109,9 @@ type Coordinator struct {
 	// SyncRetryInterval is the waiting interval between calls to the main
 	// handler of a synced block after an error
 	SyncRetryInterval Duration `validate:"required" env:"TONNODE_COORDINATOR_SYNCRETRYINTERVAL"`
-	// PurgeByExtDelInterval is the waiting interval between calls
-	// to the PurgeByExternalDelete function of the l2db which deletes
-	// pending txs externally marked by the column `external_delete`
-	PurgeByExtDelInterval Duration `validate:"required" env:"TONNODE_COORDINATOR_PURGEBYEXTDELINTERVAL"`
 	// ProverWaitReadTimeout
 	ProverWaitReadTimeout Duration `env:"TONNODE_COORDINATOR_PROVERWAITREADTIMEOUT"`
-	// L2DB is the DB that holds the pool of L2Txs
-	L2DB struct {
+	L2DB                  struct {
 		// SafetyPeriod is the number of batches after which
 		// non-pending L2Txs are deleted from the pool
 		SafetyPeriod common.BatchNum `validate:"required" env:"TONNODE_L2DB_SAFETYPERIOD"`
@@ -337,10 +332,6 @@ type APIConfigParameters struct {
 	UpdateMetricsInterval Duration `validate:"required" env:"TONNODE_API_UPDATEMETRICSINTERVAL"`
 	// UpdateRecommendedFeeInterval is the interval between updates of the recommended fees
 	UpdateRecommendedFeeInterval Duration `validate:"required" env:"TONNODE_API_UPDATERECOMMENDEDFEEINTERVAL"`
-	// CoordinatorNetwork enables a pubsub p2p network to share L2 related information among coordinators.
-	// Only used when running in coordinator mode, as the L2DB is required. Port 3598 will be used and must be open.
-	// KeyStore must be configured with the Ethereum private key of the coordinator
-	CoordinatorNetwork bool `env:"TONNODE_API_COORDINATORNETWORK"`
 	// FindPeersCoordinatorNetworkInterval time elapsed between peer discovery process for the coordinators p2p network
 	FindPeersCoordinatorNetworkInterval Duration `env:"TONNODE_API_COORDINATORNETWORK_FINDPEERSINTERVAL"`
 }
@@ -403,7 +394,7 @@ type LogConf struct {
 }
 
 // LoadNode loads the Node configuration from path.
-func LoadNode(path string, coordinator bool) (*Node, error) {
+func LoadNode(path string /*, coordinator bool*/) (*Node, error) {
 	var cfg, aux Node
 	err := SourceParamsNode(path, &cfg, &aux)
 	if err != nil {
@@ -421,10 +412,10 @@ func LoadNode(path string, coordinator bool) (*Node, error) {
 	if err := validate.Struct(cfg); err != nil {
 		return nil, common.Wrap(fmt.Errorf("error validating configuration file: %w", err))
 	}
-	if coordinator {
-		if err := validate.Struct(cfg.Coordinator); err != nil {
-			return nil, common.Wrap(fmt.Errorf("error validating configuration file: %w", err))
-		}
+	// if coordinator {
+	if err := validate.Struct(cfg.Coordinator); err != nil {
+		return nil, common.Wrap(fmt.Errorf("error validating configuration file: %w", err))
+		// }
 	}
 	log.Printf("Loaded Configuration: %+v", cfg)
 	return &cfg, nil

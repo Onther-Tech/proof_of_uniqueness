@@ -13,17 +13,17 @@ import (
 
 // HistoryDB persist the historic of the rollup
 type HistoryDB struct {
-	dbRead     *sqlx.DB
-	dbWrite    *sqlx.DB
-	apiConnCon *database.APIConnectionController
+	dbRead  *sqlx.DB
+	dbWrite *sqlx.DB
+	// apiConnCon *database.APIConnectionController
 }
 
 // NewHistoryDB initialize the DB
-func NewHistoryDB(dbRead, dbWrite *sqlx.DB, apiConnCon *database.APIConnectionController) *HistoryDB {
+func NewHistoryDB(dbRead, dbWrite *sqlx.DB /*, apiConnCon *database.APIConnectionController*/) *HistoryDB {
 	return &HistoryDB{
-		dbRead:     dbRead,
-		dbWrite:    dbWrite,
-		apiConnCon: apiConnCon,
+		dbRead:  dbRead,
+		dbWrite: dbWrite,
+		// apiConnCon: apiConnCon,
 	}
 }
 
@@ -143,8 +143,11 @@ func (hdb *HistoryDB) GetLastBatch() (*common.Batch, error) {
 	var batch common.Batch
 	err := meddler.QueryRow(
 		hdb.dbRead, &batch, `SELECT batch.batch_num, batch.eth_block_num, batch.forger_addr,
-		batch.state_root,
-		batch.num_accounts, batch.last_idx, batch.exit_root, batch.forge_l1_txs_num,
+		batch.exit_root,
+		batch.vouch_root,
+		batch.account_root,
+		batch.score_root,
+		batch.num_accounts, batch.last_idx, batch.forge_l1_txs_num,
 		batch.slot_num, batch.total_fees_usd, batch.gas_price, batch.gas_used, batch.ether_price_usd
 		FROM batch ORDER BY batch_num DESC LIMIT 1;`,
 	)
@@ -207,7 +210,7 @@ func (hdb *HistoryDB) GetAllBatches() ([]common.Batch, error) {
 	err := meddler.QueryAll(
 		hdb.dbRead, &batches,
 		`SELECT batch.batch_num, batch.eth_block_num, batch.forger_addr,
-		batch.state_root, batch.num_accounts, batch.last_idx, batch.exit_root,
+		batch.account_root, batch.vouch_root, batch.score_root, batch.num_accounts, batch.last_idx, batch.exit_root,
 		 batch.forge_l1_txs_num, batch.slot_num, batch.total_fees_usd, batch.eth_tx_hash FROM batch
 		 ORDER BY item_id;`,
 	)
@@ -220,7 +223,7 @@ func (hdb *HistoryDB) GetBatches(from, to common.BatchNum) ([]common.Batch, erro
 	err := meddler.QueryAll(
 		hdb.dbRead, &batches,
 		`SELECT batch_num, eth_block_num, forger_addr,
-		state_root, num_accounts, last_idx, exit_root, forge_l1_txs_num, slot_num, total_fees_usd, gas_price, gas_used, ether_price_usd 
+		account_root, vouch_root, score_root, num_accounts, last_idx, exit_root, forge_l1_txs_num, slot_num, total_fees_usd, gas_price, gas_used, ether_price_usd 
 		FROM batch WHERE $1 <= batch_num AND batch_num < $2 ORDER BY batch_num;`,
 		from, to,
 	)
@@ -250,7 +253,9 @@ func (hdb *HistoryDB) GetBatch(batchNum common.BatchNum) (*common.Batch, error) 
 	var batch common.Batch
 	err := meddler.QueryRow(
 		hdb.dbRead, &batch, `SELECT batch.batch_num, batch.eth_block_num, batch.forger_addr,
-		batch.state_root,
+		batch.account_root,
+		batch.score_root,
+		batch.vouch_root,
 		batch.num_accounts, batch.last_idx, batch.exit_root, batch.forge_l1_txs_num,
 		batch.slot_num, batch.total_fees_usd, batch.gas_price, batch.gas_used, batch.ether_price_usd
 		FROM batch WHERE batch_num = $1;`,
@@ -490,49 +495,6 @@ func (hdb *HistoryDB) addL1Txs(d meddler.DB, l1txs []common.L1Tx) error {
 	return common.Wrap(hdb.addTxs(d, txs))
 }
 
-// AddL2Txs inserts L2 txs to the DB. TokenID, USD and FeeUSD will be set automatically before storing the tx.
-func (hdb *HistoryDB) AddL2Txs(l2txs []common.L2Tx) error {
-	return common.Wrap(hdb.addL2Txs(hdb.dbWrite, l2txs))
-}
-
-// addL2Txs inserts L2 txs to the DB. TokenID, USD and FeeUSD will be set automatically before storing the tx.
-func (hdb *HistoryDB) addL2Txs(d meddler.DB, l2txs []common.L2Tx) error {
-	if len(l2txs) == 0 {
-		return nil
-	}
-	txs := []txWrite{}
-	for i := 0; i < len(l2txs); i++ {
-		txwrite := txWrite{
-			// Generic
-			IsL1:             false,
-			TxID:             l2txs[i].TxID,
-			Type:             l2txs[i].Type,
-			Position:         l2txs[i].Position,
-			FromIdx:          &l2txs[i].FromIdx,
-			EffectiveFromIdx: &l2txs[i].FromIdx,
-			ToIdx:            l2txs[i].ToIdx,
-			// Amount:           l2txs[i].Amount,
-			// AmountFloat:      amountFloat,
-			BatchNum:    &l2txs[i].BatchNum,
-			EthBlockNum: l2txs[i].EthBlockNum,
-			// L2
-			Nonce: &l2txs[i].Nonce,
-		}
-		if l2txs[i].Amount == nil {
-			txwrite.Amount = big.NewInt(0)
-			txwrite.AmountFloat = 0
-		} else {
-			f := new(big.Float).SetInt(l2txs[i].Amount)
-			amountFloat, _ := f.Float64()
-			txwrite.Amount = l2txs[i].Amount
-			txwrite.AmountFloat = amountFloat
-		}
-		txs = append(txs, txwrite)
-	}
-	err := hdb.addTxs(d, txs)
-	return common.Wrap(err)
-}
-
 func (hdb *HistoryDB) addTxs(d meddler.DB, txs []txWrite) error {
 	if len(txs) == 0 {
 		return nil
@@ -559,7 +521,6 @@ func (hdb *HistoryDB) addTxs(d meddler.DB, txs []txWrite) error {
 			deposit_amount_f,
 			eth_tx_hash,
 			l1_fee,
-			fee,
 			nonce
 		) VALUES %s;`,
 		txs,
@@ -610,18 +571,6 @@ func (hdb *HistoryDB) GetAllL1CoordinatorTxs() ([]common.L1Tx, error) {
 	return database.SlicePtrsToSlice(txs).([]common.L1Tx), common.Wrap(err)
 }
 
-// GetAllL2Txs returns all L2Txs from the DB
-func (hdb *HistoryDB) GetAllL2Txs() ([]common.L2Tx, error) {
-	var txs []*common.L2Tx
-	err := meddler.QueryAll(
-		hdb.dbRead, &txs,
-		`SELECT tx.id, tx.batch_num, tx.position,
-		tx.from_idx, tx.to_idx, tx.amount,
-		tx.nonce, tx.type, tx.eth_block_num
-		FROM tx WHERE is_l1 = FALSE ORDER BY item_id;`,
-	)
-	return database.SlicePtrsToSlice(txs).([]common.L2Tx), common.Wrap(err)
-}
 
 // GetUnforgedL1UserTxs gets L1 User Txs to be forged in the L1Batch with toForgeL1TxsNum.
 func (hdb *HistoryDB) GetUnforgedL1UserTxs(toForgeL1TxsNum int64) ([]common.L1Tx, error) {
@@ -860,16 +809,6 @@ func (hdb *HistoryDB) AddBlockSCData(blockData *common.BlockData) (err error) {
 		// if err = hdb.setExtraInfoForgedL1UserTxs(txn, batch.L1UserTxs); err != nil {
 		// 	return common.Wrap(err)
 		// }
-
-		// Add forged l1 coordinator Txs
-		if err := hdb.addL1Txs(txn, batch.L1CoordinatorTxs); err != nil {
-			return common.Wrap(err)
-		}
-
-		// Add l2 Txs
-		if err := hdb.addL2Txs(txn, batch.L2Txs); err != nil {
-			return common.Wrap(err)
-		}
 
 		// Add user L1 txs that will be forged in next batch
 		if userlL1s, ok := userL1s[batch.Batch.BatchNum]; ok {

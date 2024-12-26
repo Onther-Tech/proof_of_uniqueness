@@ -36,7 +36,7 @@ type L1Tx struct {
 	FromBJJ          babyjub.PublicKeyComp `meddler:"from_bjj,zeroisnull"`
 	// ToIdx is ignored in L1Tx/Deposit, but used in the L1Tx/DepositAndTransfer
 	ToIdx AccountIdx `meddler:"to_idx"`
-	// TokenID TokenID  `meddler:"token_id"`
+	// TokenID TokenID    `meddler:"token_id"`
 	Amount *big.Int `meddler:"amount,bigint"`
 	// EffectiveAmount only applies to L1UserTx.
 	EffectiveAmount *big.Int `meddler:"effective_amount,bigintnull"`
@@ -91,6 +91,8 @@ func (tx *L1Tx) SetType() error {
 			tx.Type = TxTypeDeposit
 		} else if tx.ToIdx == AccountIdx(1) {
 			tx.Type = TxTypeForceExit
+		} else if tx.Type == TxTypeCreateVouch || tx.Type == TxTypeDeleteVouch {
+			return nil
 		} else {
 			return Wrap(fmt.Errorf(
 				"cannot determine type of L1Tx, invalid ToIdx value: %d", tx.ToIdx))
@@ -176,7 +178,7 @@ func (tx L1Tx) Tx() Tx {
 // [ 16 bits ] chainId // 2 bytes
 // [ 32 bits ] empty (signatureConstant) // 4 bytes
 // Total bits compressed data:  225 bits // 29 bytes in *big.Int representation
-func (tx L1Tx) TxCompressedData(chainID uint16) (*big.Int, error) {
+func (tx L1Tx) TxCompressedData(chainID uint64) (*big.Int, error) {
 	var b [29]byte
 	// b[0:11] empty: no ToBJJSign, no fee, no nonce
 	toIdxBytes, err := tx.ToIdx.Bytes()
@@ -189,7 +191,7 @@ func (tx L1Tx) TxCompressedData(chainID uint16) (*big.Int, error) {
 		return nil, Wrap(err)
 	}
 	copy(b[17:23], fromIdxBytes[:])
-	binary.BigEndian.PutUint16(b[23:25], chainID)
+	binary.BigEndian.PutUint64(b[23:25], chainID)
 	copy(b[25:29], SignatureConstantBytes[:])
 
 	bi := new(big.Int).SetBytes(b[:])
@@ -362,33 +364,33 @@ func (tx *L1Tx) BytesGeneric() ([]byte, error) {
 
 // // BytesDataAvailability encodes a L1Tx into []byte for the Data Availability
 // // [ fromIdx | toIdx | amountFloat40 | Fee ]
-// func (tx *L1Tx) BytesDataAvailability(nLevels uint32) ([]byte, error) {
-// 	idxLen := nLevels / 8 //nolint:gomnd
+func (tx *L1Tx) BytesDataAvailability(nLevels uint32) ([]byte, error) {
+	idxLen := nLevels / 8 //nolint:gomnd
 
-// 	b := make([]byte, ((nLevels*2)+40+8)/8) //nolint:gomnd
+	b := make([]byte, ((nLevels*2)+40+8)/8) //nolint:gomnd
 
-// 	fromIdxBytes, err := tx.FromIdx.Bytes()
-// 	if err != nil {
-// 		return nil, Wrap(err)
-// 	}
-// 	copy(b[0:idxLen], fromIdxBytes[6-idxLen:])
-// 	toIdxBytes, err := tx.ToIdx.Bytes()
-// 	if err != nil {
-// 		return nil, Wrap(err)
-// 	}
-// 	copy(b[idxLen:idxLen*2], toIdxBytes[6-idxLen:])
+	fromIdxBytes, err := tx.FromIdx.Bytes()
+	if err != nil {
+		return nil, Wrap(err)
+	}
+	copy(b[0:idxLen], fromIdxBytes[6-idxLen:])
+	toIdxBytes, err := tx.ToIdx.Bytes()
+	if err != nil {
+		return nil, Wrap(err)
+	}
+	copy(b[idxLen:idxLen*2], toIdxBytes[6-idxLen:])
 
-// 	if tx.EffectiveAmount != nil {
-// 		amountFloat40, err := NewFloat40(tx.EffectiveAmount)
-// 		if err != nil {
-// 			return nil, Wrap(err)
-// 		}
-// 		amountFloat40Bytes, err := amountFloat40.Bytes()
-// 		if err != nil {
-// 			return nil, Wrap(err)
-// 		}
-// 		copy(b[idxLen*2:idxLen*2+Float40BytesLength], amountFloat40Bytes)
-// 	}
-// 	// fee = 0 (as is L1Tx)
-// 	return b[:], nil
-// }
+	if tx.EffectiveAmount != nil {
+		amountFloat40, err := NewFloat40(tx.EffectiveAmount)
+		if err != nil {
+			return nil, Wrap(err)
+		}
+		amountFloat40Bytes, err := amountFloat40.Bytes()
+		if err != nil {
+			return nil, Wrap(err)
+		}
+		copy(b[idxLen*2:idxLen*2+Float40BytesLength], amountFloat40Bytes)
+	}
+	// fee = 0 (as is L1Tx)
+	return b[:], nil
+}

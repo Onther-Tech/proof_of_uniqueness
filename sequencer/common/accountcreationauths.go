@@ -6,7 +6,7 @@ import (
 	ethCommon "github.com/ethereum/go-ethereum/common"
 	ethMath "github.com/ethereum/go-ethereum/common/math"
 	ethCrypto "github.com/ethereum/go-ethereum/crypto"
-	ethSigner "github.com/ethereum/go-ethereum/signer/core"
+	ethSigner "github.com/ethereum/go-ethereum/signer/core/apitypes"
 	"github.com/iden3/go-iden3-crypto/babyjub"
 )
 

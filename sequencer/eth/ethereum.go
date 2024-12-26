@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"time"
 	"tokamak-sybil-resistance/common"
+	"tokamak-sybil-resistance/log"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts"
@@ -160,6 +161,33 @@ func (c *EthereumClient) EthSuggestGasPrice(ctx context.Context) (gasPrice *big.
 	gasPrice = new(big.Int).Add(baseFee, tip)
 	// log.Debugw("Suggested Gas Price:", "tip", tip, "baseFee", baseFee, "gasPrice", gasPrice)
 	return
+}
+
+// NewAuth builds a new auth object to make a transaction
+func (c *EthereumClient) NewAuth() (*bind.TransactOpts, error) {
+	if c.account == nil {
+		return nil, ErrAccountNil
+	}
+
+	gasPrice, err := c.client.SuggestGasPrice(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	inc := new(big.Int).Set(gasPrice)
+	inc.Div(inc, new(big.Int).SetUint64(c.config.GasPriceDiv))
+	gasPrice.Add(gasPrice, inc)
+	log.Debugw("Transaction metadata", "gasPrice", gasPrice)
+
+	auth, err := bind.NewKeyStoreTransactorWithChainID(c.ks, *c.account, c.chainID)
+	if err != nil {
+		return nil, err
+	}
+	auth.Value = big.NewInt(0) // in wei
+	auth.GasLimit = c.config.CallGasLimit
+	auth.GasPrice = gasPrice
+	auth.Context = context.Background()
+
+	return auth, nil
 }
 
 // EthKeyStore returns the keystore in the EthereumClient

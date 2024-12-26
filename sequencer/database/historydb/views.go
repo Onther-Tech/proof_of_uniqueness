@@ -37,7 +37,7 @@ type txWrite struct {
 	EthTxHash          *ethCommon.Hash        `meddler:"eth_tx_hash"`
 	L1Fee              *big.Int               `meddler:"l1_fee,bigintnull"`
 	// L2
-	Fee   *common.FeeSelector `meddler:"fee"`
+	// Fee   *common.FeeSelector `meddler:"fee"`
 	Nonce *common.Nonce       `meddler:"nonce"`
 }
 
@@ -66,6 +66,15 @@ type MetricsAPI struct {
 	Wallets                int64   `json:"wallets"`
 	AvgTransactionFee      float64 `json:"avgTransactionFee"`
 	EstimatedTimeToForgeL1 float64 `json:"estimatedTimeToForgeL1" meddler:"estimated_time_to_forge_l1"`
+}
+
+// BucketUpdateAPI are the bucket updates (tracking the withdrawals value changes)
+// in Rollup Smart Contract
+type BucketUpdateAPI struct {
+	EthBlockNum int64               `json:"ethereumBlockNum" meddler:"eth_block_num"`
+	NumBucket   int                 `json:"numBucket" meddler:"num_bucket"`
+	BlockStamp  int64               `json:"blockStamp" meddler:"block_stamp"`
+	Withdrawals *apitypes.BigIntStr `json:"withdrawals" meddler:"withdrawals"`
 }
 
 // BucketParamsAPI are the parameter variables of each Bucket of Rollup Smart
@@ -115,7 +124,9 @@ type BatchAPI struct {
 	CollectedFeesDB  map[common.TokenID]*big.Int `json:"-" meddler:"fees_collected,json"`
 	CollectedFeesAPI apitypes.CollectedFeesAPI   `json:"collectedFees" meddler:"-"`
 	TotalFeesUSD     *float64                    `json:"historicTotalCollectedFeesUSD" meddler:"total_fees_usd"`
-	StateRoot        apitypes.BigIntStr          `json:"stateRoot" meddler:"state_root"`
+	AccountRoot      apitypes.BigIntStr          `json:"accountRoot" meddler:"account_root"`
+	VouchRoot        apitypes.BigIntStr          `json:"vouchRoot" meddler:"vouch_root"`
+	ScoreRoot        apitypes.BigIntStr          `json:"scoreRoot" meddler:"score_root"`
 	NumAccounts      int                         `json:"numAccounts" meddler:"num_accounts"`
 	ExitRoot         apitypes.BigIntStr          `json:"exitRoot" meddler:"exit_root"`
 	ForgeL1TxsNum    *int64                      `json:"forgeL1TransactionsNum" meddler:"forge_l1_txs_num"`

@@ -15,7 +15,6 @@ import (
 
 	"github.com/gobuffalo/packr/v2"
 	"github.com/jmoiron/sqlx"
-	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 	migrate "github.com/rubenv/sql-migrate"
 	"github.com/russross/meddler"
@@ -26,15 +25,40 @@ var migrations *migrate.PackrMigrationSource
 
 func init() {
 	migrations = &migrate.PackrMigrationSource{
-		Box: packr.New("hermez-db-migrations", "./migrations"),
+		Box: packr.New("tokamak-db-migrations", "./migrations"),
 	}
 	ms, err := migrations.FindMigrations()
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println("Found", len(ms), "SQL migrations")
 	if len(ms) == 0 {
 		panic(fmt.Errorf("no SQL migrations found"))
 	}
+}
+
+func GetDbCredentials() (port int, host, user, password, dbname string) {
+	host = os.Getenv("PGHOST")
+	if host == "" {
+		host = "localhost"
+	}
+	port, _ = strconv.Atoi(os.Getenv("PGPORT"))
+	if port == 0 {
+		port = 5432
+	}
+	user = os.Getenv("PGUSER")
+	if user == "" {
+		user = "postgres"
+	}
+	password = os.Getenv("PGPASSWORD")
+	if password == "" {
+		panic("No PGPASSWORD envvar specified")
+	}
+	dbname = os.Getenv("PGDATABASE")
+	if dbname == "" {
+		dbname = "tokamak"
+	}
+	return port, host, user, password, dbname
 }
 
 // MigrationsUp runs the SQL migrations Up
@@ -64,18 +88,21 @@ func MigrationsDown(db *sql.DB, migrationsToRun uint) error {
 }
 
 // ConnectSQLDB connects to the SQL DB
-func ConnectSQLDB(port int, host, user, password, name string) (*sqlx.DB, error) {
+func ConnectSQLDB() (*sqlx.DB, error) {
 	// Init meddler
 	initMeddler()
 	meddler.Default = meddler.PostgreSQL
-	// Stablish connection
+
+	port, host, user, password, dbname := GetDbCredentials()
+
+	// Establish connection
 	psqlconn := fmt.Sprintf(
 		"host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
 		host,
 		port,
 		user,
 		password,
-		name,
+		dbname,
 	)
 	db, err := sqlx.Connect("postgres", psqlconn)
 	if err != nil {
@@ -85,8 +112,8 @@ func ConnectSQLDB(port int, host, user, password, name string) (*sqlx.DB, error)
 }
 
 // InitSQLDB runs migrations and registers meddlers
-func InitSQLDB(port int, host, user, password, name string) (*sqlx.DB, error) {
-	db, err := ConnectSQLDB(port, host, user, password, name)
+func InitSQLDB() (*sqlx.DB, error) {
+	db, err := ConnectSQLDB()
 	if err != nil {
 		return nil, common.Wrap(err)
 	}
@@ -95,35 +122,6 @@ func InitSQLDB(port int, host, user, password, name string) (*sqlx.DB, error) {
 		return nil, common.Wrap(err)
 	}
 	return db, nil
-}
-
-// InitTestSQLDB opens test PostgreSQL database
-func InitTestSQLDB() (*sqlx.DB, error) {
-	err := godotenv.Load("../.env")
-	if err != nil {
-		log.Info("Error loading .env file")
-	}
-	host := os.Getenv("PGHOST")
-	if host == "" {
-		host = "localhost"
-	}
-	port, _ := strconv.Atoi(os.Getenv("PGPORT"))
-	if port == 0 {
-		port = 5432
-	}
-	user := os.Getenv("PGUSER")
-	if user == "" {
-		user = "hermez"
-	}
-	pass := os.Getenv("PGPASSWORD")
-	if pass == "" {
-		panic("No PGPASSWORD envvar specified")
-	}
-	dbname := os.Getenv("PGDATABASE")
-	if dbname == "" {
-		dbname = "hermez"
-	}
-	return InitSQLDB(port, host, user, pass, dbname)
 }
 
 // APIConnectionController is used to limit the SQL open connections used by the API

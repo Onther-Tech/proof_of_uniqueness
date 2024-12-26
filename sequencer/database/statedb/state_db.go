@@ -244,3 +244,60 @@ func (s *StateDB) getCurrentBatch() (common.BatchNum, error) {
 func (s *StateDB) DeleteOldCheckpoints() error {
 	return s.db.DeleteOldCheckpoints()
 }
+
+// CheckpointExists returns true if the checkpoint exists
+func (l *LocalStateDB) CheckpointExists(batchNum common.BatchNum) (bool, error) {
+	return l.db.CheckpointExists(batchNum)
+}
+
+// Reset performs a reset in the LocalStateDB. If fromSynchronizer is true, it
+// gets the state from LocalStateDB.synchronizerStateDB for the given batchNum.
+// If fromSynchronizer is false, get the state from LocalStateDB checkpoints.
+func (l *LocalStateDB) Reset(batchNum common.BatchNum, fromSynchronizer bool) error {
+	if fromSynchronizer {
+		log.Debugw("Making StateDB ResetFromSynchronizer", "batch", batchNum, "type", l.cfg.Type)
+		if err := l.db.ResetFromSynchronizer(batchNum, l.synchronizerStateDB.db); err != nil {
+			return common.Wrap(err)
+		}
+
+		if l.AccountTree != nil {
+			// open the Account MT for the current s.db
+			accountTree, err := merkletree.NewMerkleTree(
+				l.db.StorageWithPrefix(PrefixKeyMTAcc),
+				l.AccountTree.MaxLevels(),
+			)
+			if err != nil {
+				return common.Wrap(err)
+			}
+			l.AccountTree = accountTree
+		}
+
+		if l.VouchTree != nil {
+			// open the Vouch MT for the current s.db
+			vouchTree, err := merkletree.NewMerkleTree(
+				l.db.StorageWithPrefix(PrefixKeyMTVoc),
+				l.VouchTree.MaxLevels(),
+			)
+			if err != nil {
+				return common.Wrap(err)
+			}
+			l.VouchTree = vouchTree
+		}
+
+		if l.ScoreTree != nil {
+			// open the Score MT for the current s.db
+			scoreTree, err := merkletree.NewMerkleTree(
+				l.db.StorageWithPrefix(PrefixKeyMTSco),
+				l.ScoreTree.MaxLevels(),
+			)
+			if err != nil {
+				return common.Wrap(err)
+			}
+			l.ScoreTree = scoreTree
+		}
+
+		return nil
+	}
+	// use checkpoint from LocalStateDB
+	return l.StateDB.Reset(batchNum)
+}

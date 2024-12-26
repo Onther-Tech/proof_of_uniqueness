@@ -118,9 +118,6 @@ type Tx struct {
 	DepositAmount      *big.Int              `meddler:"deposit_amount,bigintnull"`
 	DepositAmountFloat *float64              `meddler:"deposit_amount_f"`
 	DepositAmountUSD   *float64              `meddler:"deposit_amount_usd"`
-	// L2
-	Fee    *FeeSelector `meddler:"fee"`
-	FeeUSD *float64     `meddler:"fee_usd"`
 	Nonce  *Nonce       `meddler:"nonce"`
 }
 

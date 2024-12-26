@@ -6,7 +6,6 @@ import (
 	"tokamak-sybil-resistance/api/coordinatornetwork"
 	"tokamak-sybil-resistance/common"
 	"tokamak-sybil-resistance/database/historydb"
-	"tokamak-sybil-resistance/database/l2db"
 	"tokamak-sybil-resistance/database/statedb"
 
 	ethCommon "github.com/ethereum/go-ethereum/common"
@@ -20,7 +19,6 @@ import (
 type API struct {
 	historyDB     *historydb.HistoryDB
 	config        *configAPI
-	l2DB          *l2db.L2DB
 	stateDB       *statedb.StateDB
 	hermezAddress ethCommon.Address
 	validate      *validator.Validate
@@ -39,7 +37,6 @@ type Config struct {
 	ExplorerEndpoints        bool
 	Server                   *gin.Engine
 	HistoryDB                *historydb.HistoryDB
-	L2DB                     *l2db.L2DB
 	StateDB                  *statedb.StateDB
 	EthClient                *ethclient.Client
 	ForgerAddress            *ethCommon.Address
@@ -49,9 +46,6 @@ type Config struct {
 // NewAPI sets the endpoints and the appropriate handlers, but doesn't start the server
 func NewAPI(setup Config) (*API, error) {
 	// Check input
-	if setup.CoordinatorEndpoints && setup.L2DB == nil {
-		return nil, common.Wrap(errors.New("cannot serve Coordinator endpoints without L2DB"))
-	}
 	if setup.ExplorerEndpoints && setup.HistoryDB == nil {
 		return nil, common.Wrap(errors.New("cannot serve Explorer endpoints without HistoryDB"))
 	}
@@ -66,7 +60,6 @@ func NewAPI(setup Config) (*API, error) {
 			RollupConstants: *newRollupConstants(consts.Rollup),
 			ChainID:         consts.ChainID,
 		},
-		l2DB:          setup.L2DB,
 		stateDB:       setup.StateDB,
 		hermezAddress: consts.HermezAddress,
 		validate:      nil, //TODO: Add validations

@@ -167,7 +167,7 @@ type ZKInputs struct {
 }
 
 // NewZKInputs returns a pointer to an initialized struct of ZKInputs
-func NewZKInputs(chainID uint16, maxTx, maxL1Tx, nLevels uint32,
+func NewZKInputs(chainID uint64, maxTx, maxL1Tx, nLevels uint32,
 	currentNumBatch *uint32) *ZKInputs {
 	zki := &ZKInputs{}
 	// General

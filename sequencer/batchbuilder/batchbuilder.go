@@ -58,3 +58,23 @@ func (bb *BatchBuilder) Reset(batchNum common.BatchNum, fromSynchronizer bool) e
 	//TODO: Check and Update this reseting functionality
 	// return tracerr.Wrap(bb.localStateDB.Reset(batchNum, fromSynchronizer))
 }
+
+// LocalStateDB returns the underlying LocalStateDB
+func (bb *BatchBuilder) LocalStateDB() *statedb.LocalStateDB {
+	return bb.localStateDB
+}
+
+// BuildBatch takes the transactions and returns the common.ZKInputs of the next batch
+func (bb *BatchBuilder) BuildBatch(
+	configBatch *ConfigBatch,
+	l1usertxs []common.L1Tx,
+) (*common.ZKInputs, error) {
+	bbStateDB := bb.localStateDB.StateDB
+	tp := txprocessor.NewTxProcessor(bbStateDB, configBatch.TxProcessorConfig)
+
+	ptOut, err := tp.ProcessTxs(l1usertxs)
+	if err != nil {
+		return nil, common.Wrap(err)
+	}
+	return ptOut.ZKInputs, nil
+}

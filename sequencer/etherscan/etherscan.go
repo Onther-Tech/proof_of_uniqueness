@@ -2,6 +2,7 @@ package etherscan
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -52,4 +53,22 @@ func NewEtherscanService(etherscanURL string, apikey string) (*Service, error) {
 		clientEtherscan: sling.New().Base(etherscanURL).Client(httpClient),
 		apiKey:          apikey,
 	}, nil
+}
+
+// GetGasPrice retrieves the gas price estimation from etherscan
+func (p *Service) GetGasPrice(ctx context.Context) (*GasPriceEtherscan, error) {
+	var resBody etherscanResponse
+	url := "/api?module=gastracker&action=gasoracle&apikey=" + p.apiKey
+	req, err := p.clientEtherscan.New().Get(url).Request()
+	if err != nil {
+		return nil, err
+	}
+	res, err := p.clientEtherscan.Do(req.WithContext(ctx), &resBody, nil)
+	if err != nil {
+		return nil, err
+	}
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("http response is not is %v", res.StatusCode)
+	}
+	return &resBody.Result, nil
 }

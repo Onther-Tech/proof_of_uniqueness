@@ -1,0 +1,21 @@
+#!/bin/sh
+
+# Get a list of staged Go files
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.go$')
+
+if [ -z "$STAGED_FILES" ]; then
+  echo "No Go files staged for commit, skipping golangci-lint"
+  exit 0
+fi
+
+# Run golangci-lint on the sequencer directory
+echo "Running golangci-lint on the sequencer directory"
+cd sequencer
+output=$(golangci-lint run --fix --out-format=colored-line-number)
+
+if [[ -n "$output" ]]; then
+  echo "$output"
+  exit 1
+fi
+
+exit 0

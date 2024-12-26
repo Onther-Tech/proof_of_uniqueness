@@ -1,7 +1,11 @@
 package coordinator
 
 import (
+	"encoding/json"
+	"fmt"
 	"math/big"
+	"os"
+	"path"
 	"time"
 	"tokamak-sybil-resistance/common"
 	"tokamak-sybil-resistance/coordinator/prover"
@@ -72,24 +76,23 @@ type Debug struct {
 
 // BatchInfo contans the Batch information
 type BatchInfo struct {
-	PipelineNum           int
-	BatchNum              common.BatchNum
-	ServerProof           prover.Client
-	ProofStart            time.Time
-	ZKInputs              *common.ZKInputs
-	Proof                 *prover.Proof
-	PublicInputs          []*big.Int
-	L1Batch               bool
-	VerifierIdx           uint8
-	L1UserTxs             []common.L1Tx
-	L1CoordTxs            []common.L1Tx
+	PipelineNum  int
+	BatchNum     common.BatchNum
+	ServerProof  prover.Client
+	ProofStart   time.Time
+	ZKInputs     *common.ZKInputs
+	Proof        *prover.Proof
+	PublicInputs []*big.Int
+	// L1Batch      bool
+	VerifierIdx uint8
+	L1UserTxs   []common.L1Tx
+	// L1CoordTxs            []common.L1Tx
 	L1CoordinatorTxsAuths [][]byte
-	L2Txs                 []common.L2Tx
-	CoordIdxs             []common.AccountIdx
-	ForgeBatchArgs        *eth.RollupForgeBatchArgs
-	Auth                  *bind.TransactOpts `json:"-"`
-	EthTxs                []*types.Transaction
-	EthTxsErrs            []error
+
+	ForgeBatchArgs *eth.RollupForgeBatchArgs
+	Auth           *bind.TransactOpts `json:"-"`
+	EthTxs         []*types.Transaction
+	EthTxsErrs     []error
 	// SendTimestamp  the time of batch sent to ethereum
 	SendTimestamp time.Time
 	Receipt       *types.Receipt
@@ -98,4 +101,22 @@ type BatchInfo struct {
 	// - A previous parent batch is failed
 	Fail  bool
 	Debug Debug
+}
+
+// DebugStore is a debug function to store the BatchInfo as a json text file in
+// storePath.  The filename contains the batchNumber followed by a timestamp of
+// batch start.
+func (b *BatchInfo) DebugStore(storePath string) error {
+	batchJSON, err := json.MarshalIndent(b, "", "  ")
+	if err != nil {
+		return err
+	}
+	// nolint reason: hardcoded 1_000_000 is the number of nanoseconds in a
+	// millisecond
+	//nolint:gomnd
+	filename := fmt.Sprintf("%08d-%v.%03d.json", b.BatchNum,
+		b.Debug.StartTimestamp.Unix(), b.Debug.StartTimestamp.Nanosecond()/1_000_000)
+	// nolint reason: 0640 allows rw to owner and r to group
+	//nolint:gosec
+	return os.WriteFile(path.Join(storePath, filename), batchJSON, 0640)
 }

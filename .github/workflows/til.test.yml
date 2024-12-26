@@ -49,7 +49,7 @@ jobs:
         uses: arduino/setup-task@v2
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-
+      
       - name: Run TIL tests
         run: |
           cd ./sequencer

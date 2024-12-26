@@ -76,5 +76,23 @@ forge script script/DeployPoseidon.s.sol --broadcast --ffi
 # deploy Sybil
 forge script script/DeployVerifier.s.sol --rpc-url https://rpc.thanos-sepolia.tokamak.network --private-key <your_private_key> --broadcast
 
+forge script script/DeploySybilMvp.s.sol --rpc-url https://rpc.thanos-sepolia.tokamak.network --private-key <your_private_key> --legacy  --broadcast
 
-forge script script/DeploySybil.s.sol --rpc-url https://rpc.thanos-sepolia.tokamak.network --private-key <your_private_key> --broadcast
+# deploy and verify (same time)
+forge script script/DeploySybilMvp.s.sol \
+  --rpc-url https://rpc.thanos-sepolia.tokamak.network \
+  --private-key <your_private_key> \
+  --broadcast \
+  --verify \
+  --verifier blockscout \
+  --verifier-url https://explorer.thanos-sepolia.tokamak.network/api/
+
+## Verify contract:
+
+# Encode ABI
+cast abi-encode "constructor(address[],uint256[],uint256[],uint8,address,address,address)" '[0xac47fbc2bf0f12455b8cc7cf46630decb7b26ffa]' '[100]' '[5]' 240 0xE323F085c404a72127E2eC68facA5d82D30B65Ad 0x117B65CD97f11745ABD50f362f7D227a106D6c33 0x3Bd67f3F82b59bcc524279ed4fCcD713F490715E
+
+forge verify-contract --constructor-args --chain bsc-testnet 0x3dBC98f34b4C87688313f9364e9e32764c650Ce1 src/sybil.sol:Sybil --etherscan-api-key 123
+
+forge script script/DeploySybilMvp.s.sol --rpc-url https://rpc.thanos-sepolia.tokamak.network --private-key <your_private_key> --resume --verify --verifier blockscout --verifier-url https://explorer.thanos-sepolia.tokamak.network/api/
+

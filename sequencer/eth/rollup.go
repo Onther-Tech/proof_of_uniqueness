@@ -6,13 +6,14 @@ import (
 	"math/big"
 	"strings"
 	"tokamak-sybil-resistance/common"
-	"tokamak-sybil-resistance/eth/contracts/tokamak"
+	Sybil "tokamak-sybil-resistance/eth/contracts"
 	"tokamak-sybil-resistance/log"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	ethCommon "github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
@@ -33,8 +34,10 @@ func NewQueueStruct() *QueueStruct {
 
 // RollupState represents the state of the Rollup in the Smart Contract
 type RollupState struct {
-	StateRoot *big.Int
-	ExitRoots []*big.Int
+	AccountRoot *big.Int
+	VouchRoot   *big.Int
+	ScoreRoot   *big.Int
+	ExitRoots   []*big.Int
 	// ExitNullifierMap       map[[256 / 8]byte]bool
 	ExitNullifierMap       map[int64]map[int64]bool // batchNum -> idx -> bool
 	MapL1TxQueue           map[int64]*QueueStruct
@@ -122,9 +125,9 @@ type RollupUpdateBucketsParameters struct {
 	MaxWithdrawals  *big.Int
 }
 
-type rollupEventUpdateBucketsParametersAux struct {
-	ArrayBuckets []*big.Int
-}
+// type rollupEventUpdateBucketsParametersAux struct {
+// 	ArrayBuckets []*big.Int
+// }
 
 // RollupEventUpdateBucketsParameters is an event of the Rollup Smart Contract
 type RollupEventUpdateBucketsParameters struct {
@@ -169,13 +172,13 @@ func NewRollupEvents() RollupEvents {
 // RollupForgeBatchArgs are the arguments to the ForgeBatch function in the Rollup Smart Contract
 type RollupForgeBatchArgs struct {
 	NewLastIdx            int64
-	NewStRoot             *big.Int
+	NewAccountRoot        *big.Int
+	NewScoreRoot          *big.Int
+	NewVouchRoot          *big.Int
 	NewExitRoot           *big.Int
 	L1UserTxs             []common.L1Tx
 	L1CoordinatorTxs      []common.L1Tx
 	L1CoordinatorTxsAuths [][]byte // Authorization for accountCreations for each L1CoordinatorTx
-	L2TxsData             []common.L2Tx
-	FeeIdxCoordinator     []common.AccountIdx
 	// Circuit selector
 	VerifierIdx uint8
 	L1Batch     bool
@@ -187,7 +190,9 @@ type RollupForgeBatchArgs struct {
 // RollupForgeBatchArgsAux are the arguments to the ForgeBatch function in the Rollup Smart Contract
 type rollupForgeBatchArgsAux struct {
 	NewLastIdx             *big.Int
-	NewStRoot              *big.Int
+	NewAccountRoot         *big.Int
+	NewVouchRoot           *big.Int
+	NewScoreRoot           *big.Int
 	NewExitRoot            *big.Int
 	EncodedL1CoordinatorTx []byte
 	L1L2TxsData            []byte
@@ -209,7 +214,7 @@ type RollupInterface interface {
 
 	// Public Functions
 
-	// RollupForgeBatch(*RollupForgeBatchArgs, *bind.TransactOpts) (*types.Transaction, error)
+	RollupForgeBatch(*RollupForgeBatchArgs, *bind.TransactOpts) (*types.Transaction, error)
 
 	// RollupWithdrawMerkleProof(babyPubKey babyjub.PublicKeyComp, tokenID uint32, numExitRoot,
 	// 	idx int64, amount *big.Int, siblings []*big.Int, instantWithdraw bool) (*types.Transaction,
@@ -242,7 +247,7 @@ type RollupClient struct {
 	client      *EthereumClient
 	chainID     *big.Int
 	address     ethCommon.Address
-	tokamak     *tokamak.Tokamak
+	sybil       *Sybil.Sybil
 	contractAbi abi.ABI
 	opts        *bind.CallOpts
 	consts      *common.RollupConstants
@@ -281,7 +286,7 @@ func (c *RollupClient) RollupEventInit(genesisBlockNum int64) (*RollupEventIniti
 	}
 
 	var rollupInit RollupEventInitialize
-	if err := c.contractAbi.UnpackIntoInterface(&rollupInit, "InitializeSYBEvent",
+	if err := c.contractAbi.UnpackIntoInterface(&rollupInit, "Initialize",
 		vLog.Data); err != nil {
 		return nil, 0, common.Wrap(err)
 	}
@@ -290,11 +295,11 @@ func (c *RollupClient) RollupEventInit(genesisBlockNum int64) (*RollupEventIniti
 
 // NewRollupClient creates a new RollupClient
 func NewRollupClient(client *EthereumClient, address ethCommon.Address) (*RollupClient, error) {
-	contractAbi, err := abi.JSON(strings.NewReader(string(tokamak.TokamakABI)))
+	contractAbi, err := abi.JSON(strings.NewReader(string(Sybil.SybilABI)))
 	if err != nil {
 		return nil, common.Wrap(err)
 	}
-	tokamak, err := tokamak.NewTokamak(address, client.Client())
+	sybil, err := Sybil.NewSybil(address, client.Client())
 	if err != nil {
 		return nil, common.Wrap(err)
 	}
@@ -306,7 +311,7 @@ func NewRollupClient(client *EthereumClient, address ethCommon.Address) (*Rollup
 		client:      client,
 		chainID:     chainID,
 		address:     address,
-		tokamak:     tokamak,
+		sybil:       sybil,
 		contractAbi: contractAbi,
 		opts:        newCallOpts(),
 	}
@@ -322,30 +327,35 @@ func NewRollupClient(client *EthereumClient, address ethCommon.Address) (*Rollup
 func (c *RollupClient) RollupConstants() (rollupConstants *common.RollupConstants, err error) {
 	rollupConstants = new(common.RollupConstants)
 	if err := c.client.Call(func(ec *ethclient.Client) error {
-		absoluteMaxL1L2BatchTimeout, err := c.tokamak.ABSOLUTEMAXL1L2BATCHTIMEOUT(c.opts)
+		absoluteMaxL1L2BatchTimeout, err := c.sybil.ABSOLUTEMAXBATCHTIMEOUT(c.opts)
 		if err != nil {
 			return common.Wrap(err)
 		}
 		rollupConstants.AbsoluteMaxL1L2BatchTimeout = int64(absoluteMaxL1L2BatchTimeout)
 		// rollupConstants.TokenHEZ, err = c.tokamak.TokenHEZ(c.opts)
+		// if err != nil {
+		// 	return common.Wrap(err)
+		// }
+		rollupVerifier, err := c.sybil.RollupVerifier(c.opts)
 		if err != nil {
 			return common.Wrap(err)
 		}
-		rollupVerifiersLength, err := c.tokamak.RollupVerifiersLength(c.opts)
-		if err != nil {
-			return common.Wrap(err)
-		}
-		for i := int64(0); i < rollupVerifiersLength.Int64(); i++ {
-			var newRollupVerifier common.RollupVerifierStruct
-			rollupVerifier, err := c.tokamak.RollupVerifiers(c.opts, big.NewInt(i))
-			if err != nil {
-				return common.Wrap(err)
-			}
-			newRollupVerifier.MaxTx = rollupVerifier.MaxTx.Int64()
-			newRollupVerifier.NLevels = rollupVerifier.NLevels.Int64()
-			rollupConstants.Verifiers = append(rollupConstants.Verifiers,
-				newRollupVerifier)
-		}
+		// for i := int64(0); i < rollupVerifiers.MaxTxs.Int64(); i++ {
+		// 	var newRollupVerifier common.RollupVerifierStruct
+		// 	rollupVerifier, err := c.sybil.RollupVerifiers(c.opts, big.NewInt(i))
+		// 	if err != nil {
+		// 		return common.Wrap(err)
+		// 	}
+		// 	newRollupVerifier.MaxTx = rollupVerifier.MaxTxs.Int64()
+		// 	newRollupVerifier.NLevels = rollupVerifier.NLevels.Int64()
+		// 	rollupConstants.Verifiers = append(rollupConstants.Verifiers,
+		// 		newRollupVerifier)
+		// }
+		var newRollupVerifier common.RollupVerifierStruct
+		newRollupVerifier.MaxTx = rollupVerifier.MaxTx.Int64()
+		newRollupVerifier.NLevels = rollupVerifier.NLevel.Int64()
+		rollupConstants.Verifiers = append(rollupConstants.Verifiers,
+			newRollupVerifier)
 		return common.Wrap(err)
 	}); err != nil {
 		return nil, common.Wrap(err)
@@ -356,7 +366,7 @@ func (c *RollupClient) RollupConstants() (rollupConstants *common.RollupConstant
 // RollupLastForgedBatch is the interface to call the smart contract function
 func (c *RollupClient) RollupLastForgedBatch() (lastForgedBatch int64, err error) {
 	if err := c.client.Call(func(ec *ethclient.Client) error {
-		_lastForgedBatch, err := c.tokamak.LastForgedBatch(c.opts)
+		_lastForgedBatch, err := c.sybil.LastForgedBatch(c.opts)
 		lastForgedBatch = int64(_lastForgedBatch)
 		return common.Wrap(err)
 	}); err != nil {
@@ -376,12 +386,12 @@ var (
 		"WithdrawEvent(uint48,uint32,bool)"))
 	logSYBUpdateBucketWithdraw = crypto.Keccak256Hash([]byte(
 		"UpdateBucketWithdraw(uint8,uint256,uint256)"))
-	logSYBUpdateBucketsParameters = crypto.Keccak256Hash([]byte(
-		"UpdateBucketsParameters(uint256[])"))
+	// logSYBUpdateBucketsParameters = crypto.Keccak256Hash([]byte(
+	// 	"UpdateBucketsParameters(uint256[])"))
 	logSYBSafeMode = crypto.Keccak256Hash([]byte(
 		"SafeMode()"))
 	logSYBInitialize = crypto.Keccak256Hash([]byte(
-		"InitializeSYBEvent(uint8,uint256,uint64)"))
+		"Initialize(uint8)"))
 )
 
 // RollupEventsByBlock returns the events in a block that happened in the
@@ -549,6 +559,48 @@ func (c *RollupClient) RollupEventsByBlock(blockNum int64,
 	return &rollupEvents, nil
 }
 
+// RollupForgeBatch is the interface to call the smart contract function
+func (c *RollupClient) RollupForgeBatch(args *RollupForgeBatchArgs, auth *bind.TransactOpts) (tx *types.Transaction, err error) {
+	if auth == nil {
+		auth, err = c.client.NewAuth()
+		if err != nil {
+			return nil, err
+		}
+		auth.GasLimit = 1000000
+	}
+
+	// nLevels := c.consts.Verifiers[args.VerifierIdx].NLevels //check verifiers
+
+	newLastIdx := big.NewInt(int64(args.NewLastIdx))
+
+	// var l1TxData []byte
+	// for i := 0; i < len(args.L1UserTxs); i++ {
+	// 	l1User := args.L1UserTxs[i]
+	// 	bytesl1User, err := l1User.BytesDataAvailability(uint32(nLevels))
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	l1TxData = append(l1TxData, bytesl1User[:]...)
+	// }
+
+	// TODO: Need to send ZK Proof here on last param
+	tx, err = c.sybil.ForgeBatch(
+		auth,
+		newLastIdx,
+		args.NewAccountRoot,
+		args.NewVouchRoot,
+		args.NewScoreRoot,
+		args.NewExitRoot,
+		args.ProofA,
+		args.ProofB,
+		args.ProofC,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("Sybil.ForgeBatch: %w", err)
+	}
+	return tx, nil
+}
+
 // RollupForgeBatchArgs returns the arguments used in a ForgeBatch call in the
 // Rollup Smart Contract in the given transaction, and the sender address.
 func (c *RollupClient) RollupForgeBatchArgs(ethTxHash ethCommon.Hash,
@@ -582,22 +634,20 @@ func (c *RollupClient) RollupForgeBatchArgs(ethTxHash ethCommon.Hash,
 		L1Batch:               aux.L1Batch,
 		NewExitRoot:           aux.NewExitRoot,
 		NewLastIdx:            aux.NewLastIdx.Int64(),
-		NewStRoot:             aux.NewStRoot,
+		NewAccountRoot:        aux.NewAccountRoot,
+		NewVouchRoot:          aux.NewVouchRoot,
+		NewScoreRoot:          aux.NewScoreRoot,
 		ProofA:                aux.ProofA,
 		ProofB:                aux.ProofB,
 		ProofC:                aux.ProofC,
 		VerifierIdx:           aux.VerifierIdx,
 		L1CoordinatorTxs:      []common.L1Tx{},
 		L1CoordinatorTxsAuths: [][]byte{},
-		L2TxsData:             []common.L2Tx{},
-		FeeIdxCoordinator:     []common.AccountIdx{},
 	}
 	nLevels := c.consts.Verifiers[rollupForgeBatchArgs.VerifierIdx].NLevels
 	lenL1L2TxsBytes := int((nLevels/8)*2 + common.Float40BytesLength + 1) //nolint:gomnd
 	numBytesL1TxUser := int(l1UserTxsLen) * lenL1L2TxsBytes
 	numTxsL1Coord := len(aux.EncodedL1CoordinatorTx) / common.RollupConstL1CoordinatorTotalBytes
-	numBytesL1TxCoord := numTxsL1Coord * lenL1L2TxsBytes
-	numBeginL2Tx := numBytesL1TxCoord + numBytesL1TxUser
 	l1UserTxsData := []byte{}
 	if l1UserTxsLen > 0 {
 		l1UserTxsData = aux.L1L2TxsData[:numBytesL1TxUser]
@@ -610,20 +660,6 @@ func (c *RollupClient) RollupForgeBatchArgs(ethTxHash ethCommon.Hash,
 			return nil, nil, common.Wrap(err)
 		}
 		rollupForgeBatchArgs.L1UserTxs = append(rollupForgeBatchArgs.L1UserTxs, *l1Tx)
-	}
-	l2TxsData := []byte{}
-	if numBeginL2Tx < len(aux.L1L2TxsData) {
-		l2TxsData = aux.L1L2TxsData[numBeginL2Tx:]
-	}
-	numTxsL2 := len(l2TxsData) / lenL1L2TxsBytes
-	for i := 0; i < numTxsL2; i++ {
-		l2Tx, err :=
-			common.L2TxFromBytesDataAvailability(l2TxsData[i*lenL1L2TxsBytes:(i+1)*lenL1L2TxsBytes],
-				int(nLevels))
-		if err != nil {
-			return nil, nil, common.Wrap(err)
-		}
-		rollupForgeBatchArgs.L2TxsData = append(rollupForgeBatchArgs.L2TxsData, *l2Tx)
 	}
 	for i := 0; i < numTxsL1Coord; i++ {
 		bytesL1Coordinator :=
@@ -653,14 +689,6 @@ func (c *RollupClient) RollupForgeBatchArgs(ethTxHash ethCommon.Hash,
 		} else {
 			copy(paddedFeeIdx[:],
 				aux.FeeIdxCoordinator[i*lenFeeIdxCoordinatorBytes:(i+1)*lenFeeIdxCoordinatorBytes])
-		}
-		feeIdxCoordinator, err := common.AccountIdxFromBytes(paddedFeeIdx[:])
-		if err != nil {
-			return nil, nil, common.Wrap(err)
-		}
-		if feeIdxCoordinator != common.AccountIdx(0) {
-			rollupForgeBatchArgs.FeeIdxCoordinator =
-				append(rollupForgeBatchArgs.FeeIdxCoordinator, feeIdxCoordinator)
 		}
 	}
 	return &rollupForgeBatchArgs, &sender, nil

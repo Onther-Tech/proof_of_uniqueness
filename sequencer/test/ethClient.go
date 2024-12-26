@@ -185,7 +185,9 @@ func NewClient(l bool, timer Timer, addr *ethCommon.Address, setup *ClientSetup)
 	blockCurrent := &Block{
 		Rollup: &RollupBlock{
 			State: eth.RollupState{
-				StateRoot:              big.NewInt(0),
+				AccountRoot:            big.NewInt(0),
+				VouchRoot:              big.NewInt(0),
+				ScoreRoot:              big.NewInt(0),
 				ExitRoots:              make([]*big.Int, 1),
 				ExitNullifierMap:       make(map[int64]map[int64]bool),
 				MapL1TxQueue:           mapL1TxQueue,
@@ -535,6 +537,7 @@ func (c *Client) RollupL1UserTxERC20ETH(
 	depositAmount *big.Int,
 	amount *big.Int,
 	toIdx int64,
+	txType common.TxType,
 ) (tx *types.Transaction, err error) {
 	c.rw.Lock()
 	defer c.rw.Unlock()
@@ -572,6 +575,7 @@ func (c *Client) RollupL1UserTxERC20ETH(
 		ToForgeL1TxsNum: &toForgeL1TxsNum,
 		Position:        len(queue.L1TxQueue),
 		UserOrigin:      true,
+		Type:            txType,
 	})
 	if err != nil {
 		return nil, common.Wrap(err)
@@ -711,7 +715,9 @@ func (c *Client) CtlAddBatch(args *eth.RollupForgeBatchArgs) {
 func (c *Client) addBatch(args *eth.RollupForgeBatchArgs) (*types.Transaction, error) {
 	nextBlock := c.nextBlock()
 	r := nextBlock.Rollup
-	r.State.StateRoot = args.NewStRoot
+	r.State.AccountRoot = args.NewAccountRoot
+	r.State.VouchRoot = args.NewVouchRoot
+	r.State.ScoreRoot = args.NewScoreRoot
 	if args.NewLastIdx < r.State.CurrentIdx {
 		return nil, common.Wrap(fmt.Errorf("args.NewLastIdx < r.State.CurrentIdx"))
 	}
@@ -836,23 +842,26 @@ func (c *Client) CtlAddBlocks(blocks []common.BlockData) (err error) {
 		for _, tx := range block.Rollup.L1UserTxs {
 			c.CtlSetAddr(tx.FromEthAddr)
 			if _, err := c.RollupL1UserTxERC20ETH(tx.FromBJJ, int64(tx.FromIdx),
-				tx.DepositAmount, tx.Amount, int64(tx.ToIdx)); err != nil {
+				tx.DepositAmount, tx.Amount, int64(tx.ToIdx), tx.Type); err != nil {
 				return common.Wrap(err)
 			}
 		}
 		c.CtlSetAddr(ethCommon.HexToAddress("0xE39fEc6224708f0772D2A74fd3f9055A90E0A9f2"))
 		for _, batch := range block.Rollup.Batches {
-			auths := make([][]byte, len(batch.L1CoordinatorTxs))
-			for i := range auths {
-				auths[i] = make([]byte, 65)
-			}
+			// auths := make([][]byte, len(batch.L1CoordinatorTxs))
+			// for i := range auths {
+			// 	auths[i] = make([]byte, 65)
+			// }
 			if _, err := c.RollupForgeBatch(&eth.RollupForgeBatchArgs{
-				NewLastIdx:            batch.Batch.LastIdx,
-				NewStRoot:             batch.Batch.StateRoot,
-				NewExitRoot:           batch.Batch.ExitRoot,
-				L1CoordinatorTxs:      batch.L1CoordinatorTxs,
-				L1CoordinatorTxsAuths: auths,
-				L2TxsData:             batch.L2Txs,
+				NewLastIdx: batch.Batch.LastIdx,
+
+				NewAccountRoot: batch.Batch.AccountRoot,
+				NewVouchRoot:   batch.Batch.VouchRoot,
+				NewScoreRoot:   batch.Batch.ScoreRoot,
+				NewExitRoot:    batch.Batch.ExitRoot,
+				// L1CoordinatorTxs:      batch.L1CoordinatorTxs,
+				// L1CoordinatorTxsAuths: auths,
+				// L2TxsData:             batch.L2Txs,
 				// Circuit selector
 				VerifierIdx: 0, // Intentionally empty
 				L1Batch:     batch.L1Batch,

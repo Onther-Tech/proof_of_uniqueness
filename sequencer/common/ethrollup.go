@@ -12,7 +12,7 @@ const (
 	// coordinator can use to collect fees (determines the number of tokens
 	// that the coordinator can collect fees from).  This value is
 	// determined by the circuit.
-	RollupConstMaxFeeIdxCoordinator = 64
+	// RollupConstMaxFeeIdxCoordinator = 64
 	// RollupConstReservedIDx First 256 indexes reserved, first user index will be the 256
 	RollupConstReservedIDx = 255
 	// RollupConstExitIDx IDX 1 is reserved for exits

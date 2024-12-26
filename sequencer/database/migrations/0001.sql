@@ -28,10 +28,12 @@ CREATE TABLE batch (
     forger_addr BYTEA NOT NULL, -- fake foreign key for coordinator
     -- fees_collected BYTEA NOT NULL,
     -- fee_idxs_coordinator BYTEA NOT NULL,
-    state_root DECIMAL(78,0) NOT NULL,
+    account_root DECIMAL(78,0) NOT NULL,
+    vouch_root DECIMAL(78,0) NOT NULL,
+    score_root DECIMAL(78,0) NOT NULL,
+    exit_root DECIMAL(78,0) NOT NULL,
     num_accounts BIGINT NOT NULL,
     last_idx BIGINT NOT NULL,
-    exit_root DECIMAL(78,0) NOT NULL,
     forge_l1_txs_num BIGINT,
     slot_num BIGINT NOT NULL,
     total_fees_usd NUMERIC
@@ -189,9 +191,6 @@ CREATE TABLE tx (
     deposit_amount_success BOOLEAN NOT NULL DEFAULT true,
     deposit_amount_f NUMERIC,
     deposit_amount_usd NUMERIC,
-    -- L2
-    fee INT,
-    fee_usd NUMERIC,
     nonce BIGINT
 );
 
@@ -476,29 +475,14 @@ DECLARE
 	_usd_update TIMESTAMP;
     _tx_timestamp TIMESTAMP;
 BEGIN
-    IF NEW.is_l1  THEN
-        -- Validate L1 Tx
-        IF NEW.user_origin IS NULL OR
-        NEW.from_eth_addr IS NULL OR
-        NEW.from_bjj IS NULL OR
-        NEW.deposit_amount IS NULL OR
-        NEW.deposit_amount_f IS NULL OR
-        (NOT NEW.user_origin AND NEW.batch_num IS NULL)  THEN -- If is Coordinator L1, must include batch_num
-            RAISE EXCEPTION 'Invalid L1 tx: %', NEW;
-        END IF;
-    ELSE
-        -- Validate L2 Tx
-        IF NEW.batch_num IS NULL OR NEW.nonce IS NULL THEN
-            RAISE EXCEPTION 'Invalid L2 tx: %', NEW;
-        END IF;
-        -- Set fee if it's null
-        IF NEW.fee IS NULL THEN
-            NEW.fee = (SELECT 0);
-        END IF;
-        -- Set token_id
-        -- NEW.token_id = (SELECT token_id FROM account WHERE idx = NEW.from_idx);
-        -- Set from_{eth_addr,bjj}
-        SELECT INTO NEW."from_eth_addr", NEW."from_bjj" eth_addr, bjj FROM account WHERE idx = NEW.from_idx;
+    -- Validate L1 Tx
+    IF NEW.user_origin IS NULL OR
+    NEW.from_eth_addr IS NULL OR
+    NEW.from_bjj IS NULL OR
+    NEW.deposit_amount IS NULL OR
+    NEW.deposit_amount_f IS NULL OR
+    (NOT NEW.user_origin AND NEW.batch_num IS NULL)  THEN -- If is Coordinator L1, must include batch_num
+        RAISE EXCEPTION 'Invalid L1 tx: %', NEW;
     END IF;
     -- Set USD related
     -- SELECT INTO _value, _usd_update, _tx_timestamp 
@@ -674,8 +658,6 @@ CREATE TABLE node_info (
     item_id SERIAL PRIMARY KEY,
     state BYTEA,            -- object returned by GET /state
     config BYTEA,           -- Node config
-    -- max_pool_txs BIGINT,    -- L2DB config
-    -- min_fee NUMERIC,        -- L2DB config
     constants BYTEA         -- info of the network that is constant
 );
 INSERT INTO node_info(item_id) VALUES (1); -- Always have a single row that we will update
@@ -707,6 +689,7 @@ DROP FUNCTION IF EXISTS set_pool_tx;
 DROP TABLE IF EXISTS node_info;
 DROP TABLE IF EXISTS account_creation_auth;
 DROP TABLE IF EXISTS tx_pool;
+
 DROP TABLE IF EXISTS auction_vars;
 DROP TABLE IF EXISTS rollup_vars;
 DROP TABLE IF EXISTS escape_hatch_withdrawal;

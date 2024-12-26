@@ -1,4 +1,4 @@
-name: "SYB synchronizer test"
+name: "SYB Node test"
 
 on:
   push:
@@ -6,15 +6,11 @@ on:
       - "main"
       - "develop"
     paths:
-      - "sequencer/synchronizer/**"
-      - "sequencer/database/historydb/**"
-      - "sequencer/database/statedb/**"
-      - "sequencer/txprocessor/**"
-      - "sequencer/test/til/**"
+      - "sequencer/**"
   workflow_dispatch:
 
 jobs:
-  syb-synchronizer-test:
+  syb-node-test:
     strategy:
       fail-fast: false
     runs-on: ubuntu-latest
@@ -53,10 +49,19 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Run synchronizer tests
+      - name: Install golanci-lint
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.62.2
+
+      - name: Run golangci-lint on sequencer
         run: |
           cd ./sequencer
-          task test-synchronizer
+          golangci-lint run ./...
+
+      - name: Run node tests
+        run: |
+          cd ./sequencer
+          task test-node
         env:
           PGHOST: "localhost"
           PGPORT: "5432"
